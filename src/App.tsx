@@ -16,6 +16,7 @@ import {
 	parseIntegerInput,
 } from "@/lib/format";
 import {
+	clearActiveUserCode,
 	deleteExpenseItem,
 	deleteHolding,
 	deleteInstallment,
@@ -34,6 +35,7 @@ import {
 	updateInstallment,
 	upsertAccumulationLogs,
 	upsertInstallmentContributionLogs,
+	verifyAndActivateUserCode,
 } from "@/lib/repository";
 import {
 	fetchCurrentPrice,
@@ -134,6 +136,7 @@ const defaultExpenseDraft: ExpenseDraft = {
 
 const QUOTE_CACHE_STORAGE_KEY = "my-hundred-million.quote-cache.v1";
 const QUOTE_CACHE_TTL_MS = 30 * 60 * 1000;
+const USER_CODE_STORAGE_KEY = "my-hundred-million.user-code.v1";
 
 type CachedQuoteEntry = {
 	price: number;
@@ -174,6 +177,9 @@ function App() {
 	>({});
 	const [loading, setLoading] = useState(true);
 	const [message, setMessage] = useState("");
+	const [userCodeInput, setUserCodeInput] = useState("");
+	const [verifiedUserCode, setVerifiedUserCode] = useState<string | null>(null);
+	const [verifyingUserCode, setVerifyingUserCode] = useState(false);
 
 	const [stockSearchQuery, setStockSearchQuery] = useState("");
 	const [stockSymbolResults, setStockSymbolResults] = useState<
@@ -295,11 +301,62 @@ function App() {
 		[holdings],
 	);
 
+	const verifyUserCode = useCallback(
+		async (rawCode?: string, options?: { silent?: boolean }) => {
+			if (!hasSupabaseEnv) {
+				setMessage("Supabase 환경변수를 먼저 설정해주세요.");
+				return;
+			}
+			const userCode = (rawCode ?? userCodeInput).trim().toUpperCase();
+			if (userCode.length < 4) {
+				if (!options?.silent) {
+					setMessage("식별 번호는 4자 이상 입력해주세요.");
+				}
+				return;
+			}
+			setVerifyingUserCode(true);
+			try {
+				const result = await verifyAndActivateUserCode(userCode);
+				setVerifiedUserCode(userCode);
+				setUserCodeInput(userCode);
+				localStorage.setItem(USER_CODE_STORAGE_KEY, userCode);
+				setMessage(
+					result.migrated
+						? "기존 데이터가 현재 식별 번호로 마이그레이션되었습니다."
+						: "식별 번호 확인이 완료되었습니다.",
+				);
+			} catch (error) {
+				clearActiveUserCode();
+				setVerifiedUserCode(null);
+				localStorage.removeItem(USER_CODE_STORAGE_KEY);
+				if (!options?.silent) {
+					setMessage(extractError(error));
+				}
+			} finally {
+				setVerifyingUserCode(false);
+			}
+		},
+		[userCodeInput],
+	);
+
+	useEffect(() => {
+		const savedCode = localStorage.getItem(USER_CODE_STORAGE_KEY);
+		if (savedCode === null || savedCode.trim().length === 0) {
+			return;
+		}
+		setUserCodeInput(savedCode.trim().toUpperCase());
+		verifyUserCode(savedCode, { silent: true }).catch(() => {});
+	}, [verifyUserCode]);
+
 	useEffect(() => {
 		let cancelled = false;
 
 		async function load() {
 			if (!hasSupabaseEnv) {
+				setLoading(false);
+				return;
+			}
+			if (verifiedUserCode === null) {
 				setLoading(false);
 				return;
 			}
@@ -353,7 +410,7 @@ function App() {
 		return () => {
 			cancelled = true;
 		};
-	}, [currentMonthRange.fromDate, currentMonthRange.toDate]);
+	}, [currentMonthRange.fromDate, currentMonthRange.toDate, verifiedUserCode]);
 
 	const refreshUsdKrwRate = useCallback(async (silent = false) => {
 		setLoadingFxRate(true);
@@ -823,6 +880,21 @@ function App() {
 		}
 	}
 
+	function handleResetUserCode() {
+		clearActiveUserCode();
+		localStorage.removeItem(USER_CODE_STORAGE_KEY);
+		setVerifiedUserCode(null);
+		setUserCodeInput("");
+		setMessage("");
+		setOverview(defaultOverview);
+		setExpenseItems([]);
+		setHoldings([]);
+		setInstallments([]);
+		setAccumulationLogs([]);
+		setInstallmentLogs([]);
+		setQuotes({});
+	}
+
 	async function handleAddExpense(kind: ExpenseKind) {
 		if (!hasSupabaseEnv) {
 			setMessage("Supabase 환경변수를 먼저 설정해주세요.");
@@ -1252,6 +1324,51 @@ function App() {
 		[expenseItems],
 	);
 
+	if (verifiedUserCode === null) {
+		return (
+			<main className="min-h-screen bg-zinc-100 px-3 py-8 text-slate-900 md:px-6 xl:px-8">
+				<div className="mx-auto max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+					<p className="text-sm text-slate-500">my-hundred-million</p>
+					<h1 className="mt-2 text-2xl font-semibold">식별 번호 확인</h1>
+					<p className="mt-3 text-sm text-slate-600">
+						데이터 수정 전 식별 번호를 먼저 검증합니다. 기존 데이터는 첫 인증 시
+						현재 식별 번호로 자동 마이그레이션됩니다.
+					</p>
+					{!hasSupabaseEnv ? (
+						<div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+							VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY를 먼저 설정해주세요.
+						</div>
+					) : null}
+					<div className="mt-4 flex gap-2">
+						<input
+							className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm uppercase"
+							placeholder="예: DONGHYUN-2026"
+							value={userCodeInput}
+							onChange={(event) => setUserCodeInput(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									void verifyUserCode();
+								}
+							}}
+						/>
+						<Button
+							type="button"
+							onClick={() => verifyUserCode()}
+							disabled={verifyingUserCode || !hasSupabaseEnv}
+						>
+							{verifyingUserCode ? "검증 중..." : "검증"}
+						</Button>
+					</div>
+					{message.length > 0 ? (
+						<div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+							{message}
+						</div>
+					) : null}
+				</div>
+			</main>
+		);
+	}
+
 	return (
 		<main className="min-h-screen bg-zinc-100 px-3 py-8 text-slate-900 md:px-6 xl:px-8">
 			<div className="mx-auto grid max-w-[1820px] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
@@ -1266,6 +1383,10 @@ function App() {
 							연동 상태와 빠른 갱신 액션을 확인합니다.
 						</p>
 						<div className="mt-4 grid gap-3">
+							<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+								<p className="text-xs text-slate-500">식별 번호</p>
+								<p className="mt-1 text-sm font-semibold">{verifiedUserCode}</p>
+							</div>
 							<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
 								<p className="text-xs text-slate-500">Supabase</p>
 								<p className="mt-1 text-sm font-semibold">
@@ -1310,6 +1431,13 @@ function App() {
 								disabled={loadingQuotes || !hasStockApiKey}
 							>
 								{loadingQuotes ? "현재가 갱신 중..." : "현재가 새로고침"}
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={handleResetUserCode}
+							>
+								식별 번호 변경
 							</Button>
 						</div>
 						<div className="mt-6 border-t border-slate-200 pt-4">

@@ -5,6 +5,8 @@ React + Vite + Biome + Tailwind + shadcn 기반 개인 자산관리 프론트입
 ## 현재 구현 범위
 
 - 월급 입력/저장
+- 식별 번호 검증 단계 (검증 전에는 데이터 조회/수정 불가)
+- 기존 데이터 1회 마이그레이션 (`LEGACY_OWNER` -> 입력한 식별 번호)
 - 지출 항목 입력/저장 (고정/비고정, 다중 항목 추가/수정/삭제)
 - 주식 보유 입력/저장 (토스증권, 삼성증권)
 - 주식 모으기 스케줄 입력/수정/저장
@@ -62,6 +64,9 @@ npx supabase functions deploy krx-proxy --project-ref 프로젝트_REF
 Supabase SQL Editor에서 아래 파일을 실행하세요.
 
 - `supabase/schema.sql`
+
+이미 사용 중인 DB라도 같은 파일을 다시 실행하면 `user_code` 컬럼/제약 추가와
+기존 데이터(`LEGACY_OWNER`) 마이그레이션 준비가 함께 반영됩니다.
 
 ## 3) 실행
 

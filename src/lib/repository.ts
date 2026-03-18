@@ -19,6 +19,7 @@ import type {
 type OverviewRow = {
 	id: number;
 	salary: number;
+	user_code: string;
 };
 
 type ExpenseRow = {
@@ -26,6 +27,7 @@ type ExpenseRow = {
 	kind: ExpenseKind;
 	name: string;
 	amount: number;
+	user_code: string;
 };
 
 type InstallmentRow = {
@@ -42,6 +44,7 @@ type InstallmentRow = {
 	maturity_date: string | null;
 	benefit_type: InstallmentBenefitType;
 	benefit_value: number;
+	user_code: string;
 };
 
 type InstallmentContributionLogRow = {
@@ -49,6 +52,7 @@ type InstallmentContributionLogRow = {
 	installment_id: number;
 	run_date: string;
 	amount: number;
+	user_code: string;
 };
 
 type HoldingRow = {
@@ -67,6 +71,7 @@ type HoldingRow = {
 	accumulation_type: AccumulationType;
 	accumulation_currency: AccumulationCurrency | null;
 	accumulation_value: number;
+	user_code: string;
 };
 
 type AccumulationLogRow = {
@@ -77,7 +82,128 @@ type AccumulationLogRow = {
 	currency: "KRW" | "USD";
 	fx_rate: number | null;
 	krw_amount: number;
+	user_code: string;
 };
+
+export const LEGACY_USER_CODE = "LEGACY_OWNER";
+
+let activeUserCode: string | null = null;
+
+function normalizeUserCode(userCode: string): string {
+	return userCode.trim().toUpperCase();
+}
+
+function requireUserCode(): string {
+	if (activeUserCode === null || activeUserCode.length === 0) {
+		throw new Error("식별 번호 검증이 필요합니다.");
+	}
+	return activeUserCode;
+}
+
+export function getActiveUserCode(): string | null {
+	return activeUserCode;
+}
+
+export function clearActiveUserCode() {
+	activeUserCode = null;
+}
+
+async function migrateLegacyDataToUserCode(userCode: string): Promise<void> {
+	const client = assertSupabase();
+
+	const results = await Promise.all([
+		client
+			.from("finance_overview")
+			.update({ user_code: userCode })
+			.eq("user_code", LEGACY_USER_CODE),
+		client
+			.from("expense_items")
+			.update({ user_code: userCode })
+			.eq("user_code", LEGACY_USER_CODE),
+		client
+			.from("stock_holdings")
+			.update({ user_code: userCode })
+			.eq("user_code", LEGACY_USER_CODE),
+		client
+			.from("stock_accumulation_logs")
+			.update({ user_code: userCode })
+			.eq("user_code", LEGACY_USER_CODE),
+		client
+			.from("installment_savings")
+			.update({ user_code: userCode })
+			.eq("user_code", LEGACY_USER_CODE),
+		client
+			.from("installment_contribution_logs")
+			.update({ user_code: userCode })
+			.eq("user_code", LEGACY_USER_CODE),
+	]);
+	for (const result of results) {
+		if (result.error !== null) {
+			throw new Error(result.error.message);
+		}
+	}
+}
+
+export async function verifyAndActivateUserCode(
+	inputCode: string,
+): Promise<{ migrated: boolean }> {
+	const client = assertSupabase();
+	const userCode = normalizeUserCode(inputCode);
+	if (userCode.length < 4) {
+		throw new Error("식별 번호는 4자 이상 입력해주세요.");
+	}
+
+	const { data: ownOverview, error: ownOverviewError } = await client
+		.from("finance_overview")
+		.select("id, salary, user_code")
+		.eq("user_code", userCode)
+		.maybeSingle<OverviewRow>();
+	if (ownOverviewError !== null) {
+		throw new Error(ownOverviewError.message);
+	}
+
+	if (ownOverview !== null) {
+		activeUserCode = userCode;
+		return { migrated: false };
+	}
+
+	const { data: legacyOverview, error: legacyOverviewError } = await client
+		.from("finance_overview")
+		.select("id, salary, user_code")
+		.eq("user_code", LEGACY_USER_CODE)
+		.maybeSingle<OverviewRow>();
+	if (legacyOverviewError !== null) {
+		throw new Error(legacyOverviewError.message);
+	}
+
+	if (legacyOverview !== null) {
+		await migrateLegacyDataToUserCode(userCode);
+		activeUserCode = userCode;
+		return { migrated: true };
+	}
+
+	const { data: anyOverview, error: anyOverviewError } = await client
+		.from("finance_overview")
+		.select("id")
+		.limit(1);
+	if (anyOverviewError !== null) {
+		throw new Error(anyOverviewError.message);
+	}
+
+	if ((anyOverview ?? []).length > 0) {
+		throw new Error("식별 번호가 일치하지 않습니다.");
+	}
+
+	const { error: createOverviewError } = await client
+		.from("finance_overview")
+		.insert({ id: 1, user_code: userCode, salary: 0 });
+	if (createOverviewError !== null) {
+		throw new Error(createOverviewError.message);
+	}
+
+	activeUserCode = userCode;
+	return { migrated: false };
+}
 
 function mapOverview(row: OverviewRow): FinanceOverview {
 	return {
@@ -159,10 +285,11 @@ function mapAccumulationLog(row: AccumulationLogRow): StockAccumulationLog {
 
 export async function fetchOverview(): Promise<FinanceOverview> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { data, error } = await client
 		.from("finance_overview")
-		.select("id, salary")
-		.eq("id", 1)
+		.select("id, salary, user_code")
+		.eq("user_code", userCode)
 		.maybeSingle<OverviewRow>();
 
 	if (error !== null) {
@@ -175,8 +302,8 @@ export async function fetchOverview(): Promise<FinanceOverview> {
 
 	const { data: inserted, error: insertError } = await client
 		.from("finance_overview")
-		.insert({ id: 1 })
-		.select("id, salary")
+		.insert({ id: 1, user_code: userCode })
+		.select("id, salary, user_code")
 		.single<OverviewRow>();
 
 	if (insertError !== null) {
@@ -190,8 +317,10 @@ export async function saveOverview(
 	input: Omit<FinanceOverview, "id">,
 ): Promise<void> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { error } = await client.from("finance_overview").upsert({
 		id: 1,
+		user_code: userCode,
 		salary: input.salary,
 	});
 
@@ -202,9 +331,11 @@ export async function saveOverview(
 
 export async function fetchExpenseItems(): Promise<ExpenseItem[]> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { data, error } = await client
 		.from("expense_items")
-		.select("id, kind, name, amount")
+		.select("id, kind, name, amount, user_code")
+		.eq("user_code", userCode)
 		.order("kind", { ascending: true })
 		.order("created_at", { ascending: true })
 		.returns<ExpenseRow[]>();
@@ -220,14 +351,16 @@ export async function insertExpenseItem(
 	input: Omit<ExpenseItem, "id">,
 ): Promise<ExpenseItem> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { data, error } = await client
 		.from("expense_items")
 		.insert({
 			kind: input.kind,
 			name: input.name,
 			amount: input.amount,
+			user_code: userCode,
 		})
-		.select("id, kind, name, amount")
+		.select("id, kind, name, amount, user_code")
 		.single<ExpenseRow>();
 
 	if (error !== null) {
@@ -242,6 +375,7 @@ export async function updateExpenseItem(
 	input: Omit<ExpenseItem, "id">,
 ): Promise<void> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { error } = await client
 		.from("expense_items")
 		.update({
@@ -249,7 +383,8 @@ export async function updateExpenseItem(
 			name: input.name,
 			amount: input.amount,
 		})
-		.eq("id", id);
+		.eq("id", id)
+		.eq("user_code", userCode);
 
 	if (error !== null) {
 		throw new Error(error.message);
@@ -258,7 +393,12 @@ export async function updateExpenseItem(
 
 export async function deleteExpenseItem(id: number): Promise<void> {
 	const client = assertSupabase();
-	const { error } = await client.from("expense_items").delete().eq("id", id);
+	const userCode = requireUserCode();
+	const { error } = await client
+		.from("expense_items")
+		.delete()
+		.eq("id", id)
+		.eq("user_code", userCode);
 	if (error !== null) {
 		throw new Error(error.message);
 	}
@@ -266,11 +406,13 @@ export async function deleteExpenseItem(id: number): Promise<void> {
 
 export async function fetchInstallments(): Promise<InstallmentSaving[]> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { data, error } = await client
 		.from("installment_savings")
 		.select(
-			"id, name, monthly_amount, saved_amount, is_recurring, cadence, run_day, apply_mode, recurring_started_at, start_date, maturity_date, benefit_type, benefit_value",
+			"id, name, monthly_amount, saved_amount, is_recurring, cadence, run_day, apply_mode, recurring_started_at, start_date, maturity_date, benefit_type, benefit_value, user_code",
 		)
+		.eq("user_code", userCode)
 		.order("created_at", { ascending: true })
 		.returns<InstallmentRow[]>();
 
@@ -285,6 +427,7 @@ export async function insertInstallment(
 	input: Omit<InstallmentSaving, "id">,
 ): Promise<InstallmentSaving> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { data, error } = await client
 		.from("installment_savings")
 		.insert({
@@ -300,9 +443,10 @@ export async function insertInstallment(
 			maturity_date: input.maturityDate,
 			benefit_type: input.benefitType,
 			benefit_value: input.benefitValue,
+			user_code: userCode,
 		})
 		.select(
-			"id, name, monthly_amount, saved_amount, is_recurring, cadence, run_day, apply_mode, recurring_started_at, start_date, maturity_date, benefit_type, benefit_value",
+			"id, name, monthly_amount, saved_amount, is_recurring, cadence, run_day, apply_mode, recurring_started_at, start_date, maturity_date, benefit_type, benefit_value, user_code",
 		)
 		.single<InstallmentRow>();
 
@@ -318,6 +462,7 @@ export async function updateInstallment(
 	input: Omit<InstallmentSaving, "id">,
 ): Promise<void> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { error } = await client
 		.from("installment_savings")
 		.update({
@@ -334,7 +479,8 @@ export async function updateInstallment(
 			benefit_type: input.benefitType,
 			benefit_value: input.benefitValue,
 		})
-		.eq("id", id);
+		.eq("id", id)
+		.eq("user_code", userCode);
 
 	if (error !== null) {
 		throw new Error(error.message);
@@ -343,10 +489,12 @@ export async function updateInstallment(
 
 export async function deleteInstallment(id: number): Promise<void> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { error } = await client
 		.from("installment_savings")
 		.delete()
-		.eq("id", id);
+		.eq("id", id)
+		.eq("user_code", userCode);
 	if (error !== null) {
 		throw new Error(error.message);
 	}
@@ -357,9 +505,11 @@ export async function fetchInstallmentContributionLogsByDateRange(
 	toDate: string,
 ): Promise<InstallmentContributionLog[]> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { data, error } = await client
 		.from("installment_contribution_logs")
-		.select("id, installment_id, run_date, amount")
+		.select("id, installment_id, run_date, amount, user_code")
+		.eq("user_code", userCode)
 		.gte("run_date", fromDate)
 		.lte("run_date", toDate)
 		.order("run_date", { ascending: true })
@@ -379,14 +529,16 @@ export async function upsertInstallmentContributionLogs(
 		return;
 	}
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { error } = await client.from("installment_contribution_logs").upsert(
 		logs.map((log) => ({
 			installment_id: log.installmentId,
 			run_date: log.runDate,
 			amount: log.amount,
+			user_code: userCode,
 		})),
 		{
-			onConflict: "installment_id,run_date",
+			onConflict: "installment_id,run_date,user_code",
 		},
 	);
 
@@ -397,11 +549,13 @@ export async function upsertInstallmentContributionLogs(
 
 export async function fetchHoldings(): Promise<StockHolding[]> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { data, error } = await client
 		.from("stock_holdings")
 		.select(
-			"id, broker, market, symbol, name, quote_symbol, quantity, average_price, is_accumulating, accumulation_started_at, cadence, run_day, accumulation_type, accumulation_currency, accumulation_value",
+			"id, broker, market, symbol, name, quote_symbol, quantity, average_price, is_accumulating, accumulation_started_at, cadence, run_day, accumulation_type, accumulation_currency, accumulation_value, user_code",
 		)
+		.eq("user_code", userCode)
 		.order("broker", { ascending: true })
 		.order("created_at", { ascending: true })
 		.returns<HoldingRow[]>();
@@ -417,6 +571,7 @@ export async function insertHolding(
 	input: Omit<StockHolding, "id">,
 ): Promise<StockHolding> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { data, error } = await client
 		.from("stock_holdings")
 		.insert({
@@ -434,9 +589,10 @@ export async function insertHolding(
 			accumulation_type: input.accumulationType,
 			accumulation_currency: input.accumulationCurrency,
 			accumulation_value: input.accumulationValue,
+			user_code: userCode,
 		})
 		.select(
-			"id, broker, market, symbol, name, quote_symbol, quantity, average_price, is_accumulating, accumulation_started_at, cadence, run_day, accumulation_type, accumulation_currency, accumulation_value",
+			"id, broker, market, symbol, name, quote_symbol, quantity, average_price, is_accumulating, accumulation_started_at, cadence, run_day, accumulation_type, accumulation_currency, accumulation_value, user_code",
 		)
 		.single<HoldingRow>();
 
@@ -452,6 +608,7 @@ export async function updateHolding(
 	input: Omit<StockHolding, "id">,
 ): Promise<void> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { error } = await client
 		.from("stock_holdings")
 		.update({
@@ -470,7 +627,8 @@ export async function updateHolding(
 			accumulation_currency: input.accumulationCurrency,
 			accumulation_value: input.accumulationValue,
 		})
-		.eq("id", id);
+		.eq("id", id)
+		.eq("user_code", userCode);
 
 	if (error !== null) {
 		throw new Error(error.message);
@@ -482,11 +640,13 @@ export async function fetchAccumulationLogsByDateRange(
 	toDate: string,
 ): Promise<StockAccumulationLog[]> {
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { data, error } = await client
 		.from("stock_accumulation_logs")
 		.select(
-			"id, holding_id, run_date, local_amount, currency, fx_rate, krw_amount",
+			"id, holding_id, run_date, local_amount, currency, fx_rate, krw_amount, user_code",
 		)
+		.eq("user_code", userCode)
 		.gte("run_date", fromDate)
 		.lte("run_date", toDate)
 		.order("run_date", { ascending: true })
@@ -506,6 +666,7 @@ export async function upsertAccumulationLogs(
 		return;
 	}
 	const client = assertSupabase();
+	const userCode = requireUserCode();
 	const { error } = await client.from("stock_accumulation_logs").upsert(
 		logs.map((log) => ({
 			holding_id: log.holdingId,
@@ -514,9 +675,10 @@ export async function upsertAccumulationLogs(
 			currency: log.currency,
 			fx_rate: log.fxRate,
 			krw_amount: log.krwAmount,
+			user_code: userCode,
 		})),
 		{
-			onConflict: "holding_id,run_date",
+			onConflict: "holding_id,run_date,user_code",
 		},
 	);
 
@@ -527,7 +689,12 @@ export async function upsertAccumulationLogs(
 
 export async function deleteHolding(id: number): Promise<void> {
 	const client = assertSupabase();
-	const { error } = await client.from("stock_holdings").delete().eq("id", id);
+	const userCode = requireUserCode();
+	const { error } = await client
+		.from("stock_holdings")
+		.delete()
+		.eq("id", id)
+		.eq("user_code", userCode);
 	if (error !== null) {
 		throw new Error(error.message);
 	}
