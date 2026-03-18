@@ -22,6 +22,12 @@ export type InstallmentApplyMode = (typeof INSTALLMENT_APPLY_MODES)[number];
 export type FinanceOverview = {
 	id: number;
 	salary: number;
+	actualSpent: number;
+	realizedPnl: number;
+	tossDepositAmount: number;
+	tossDepositCurrency: "KRW" | "USD";
+	samsungDepositAmount: number;
+	samsungDepositCurrency: "KRW" | "USD";
 };
 
 export type ExpenseItem = {
