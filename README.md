@@ -70,6 +70,27 @@ npm install
 npm run dev
 ```
 
+## 4) GitHub Pages 배포
+
+이 저장소는 GitHub Actions 기반 Pages 배포가 설정되어 있습니다.
+
+- 워크플로: `.github/workflows/deploy-pages.yml`
+- `main` 브랜치에 push 하면 자동 배포
+- 배포 URL 형식: `https://<github-id>.github.io/my-hundred-million/`
+
+사전 설정:
+
+1. GitHub 저장소 `Settings > Pages > Build and deployment`에서 Source를 `GitHub Actions`로 설정
+2. `Settings > Secrets and variables > Actions > New repository secret`에 아래 값 등록
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - 선택: `VITE_EODHD_API_KEY`, `VITE_TWELVE_DATA_API_KEY`, `VITE_FMP_API_KEY`, `VITE_ALPHA_VANTAGE_API_KEY`
+
+참고:
+
+- 프런트엔드 `VITE_*` 키는 번들에 포함되므로 브라우저에서 노출됩니다.
+- 저장소가 private일 경우 계정/요금제에 따라 Pages 공개가 제한될 수 있습니다.
+
 ## Scripts
 
 ```bash
