@@ -2,7 +2,12 @@ export const BROKERS = ["TOSS", "SAMSUNG"] as const;
 export const MARKETS = ["KR", "US"] as const;
 export const ACCUMULATION_TYPES = ["AMOUNT", "SHARES"] as const;
 export const ACCUMULATION_CURRENCIES = ["KRW", "USD"] as const;
-export const EXPENSE_KINDS = ["FIXED", "VARIABLE"] as const;
+export const EXPENSE_KINDS = [
+	"FIXED",
+	"VARIABLE",
+	"CONSUMPTION",
+	"INCOME",
+] as const;
 export const CADENCES = ["WEEKLY", "MONTHLY"] as const;
 export const INSTALLMENT_BENEFIT_TYPES = [
 	"INTEREST_RATE",

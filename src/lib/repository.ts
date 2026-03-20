@@ -528,6 +528,8 @@ export async function copyPreviousMonthData(): Promise<void> {
 export type SectionYearMonthCopyTarget =
 	| "FIXED_EXPENSE"
 	| "VARIABLE_EXPENSE"
+	| "CONSUMPTION_EXPENSE"
+	| "INCOME_EXPENSE"
 	| "STOCK_HOLDINGS"
 	| "INSTALLMENTS";
 
@@ -558,8 +560,20 @@ export async function copySectionDataFromYearMonth(
 		throw new Error("현재 선택 월과 동일한 연월은 불러올 수 없습니다.");
 	}
 
-	if (target === "FIXED_EXPENSE" || target === "VARIABLE_EXPENSE") {
-		const kind: ExpenseKind = target === "FIXED_EXPENSE" ? "FIXED" : "VARIABLE";
+	if (
+		target === "FIXED_EXPENSE" ||
+		target === "VARIABLE_EXPENSE" ||
+		target === "CONSUMPTION_EXPENSE" ||
+		target === "INCOME_EXPENSE"
+	) {
+		const kind: ExpenseKind =
+			target === "FIXED_EXPENSE"
+				? "FIXED"
+				: target === "VARIABLE_EXPENSE"
+					? "VARIABLE"
+					: target === "CONSUMPTION_EXPENSE"
+						? "CONSUMPTION"
+						: "INCOME";
 		const { data: sourceRows, error: sourceError } = await client
 			.from("expense_items")
 			.select("name, amount")

@@ -162,7 +162,13 @@ type CachedQuoteEntry = {
 
 type QuoteCacheStore = Record<string, CachedQuoteEntry>;
 type AppTab = "DASHBOARD" | "YEARLY_SETTLEMENT";
-type SectionImportTarget = "STOCK" | "INSTALLMENT" | "FIXED" | "VARIABLE";
+type SectionImportTarget =
+	| "STOCK"
+	| "INSTALLMENT"
+	| "FIXED"
+	| "VARIABLE"
+	| "CONSUMPTION"
+	| "INCOME";
 type SectionImportModalTarget = SectionImportTarget | null;
 
 function App() {
@@ -179,6 +185,8 @@ function App() {
 	>({
 		FIXED: { ...defaultExpenseDraft },
 		VARIABLE: { ...defaultExpenseDraft },
+		CONSUMPTION: { ...defaultExpenseDraft },
+		INCOME: { ...defaultExpenseDraft },
 	});
 	const [submittingExpenseKind, setSubmittingExpenseKind] =
 		useState<ExpenseKind | null>(null);
@@ -206,6 +214,8 @@ function App() {
 			INSTALLMENT: previous,
 			FIXED: previous,
 			VARIABLE: previous,
+			CONSUMPTION: previous,
+			INCOME: previous,
 		};
 	});
 	const [copyingSectionTarget, setCopyingSectionTarget] =
@@ -298,6 +308,8 @@ function App() {
 			INSTALLMENT: previous,
 			FIXED: previous,
 			VARIABLE: previous,
+			CONSUMPTION: previous,
+			INCOME: previous,
 		});
 	}, [selectedYearMonth]);
 
@@ -461,6 +473,7 @@ function App() {
 		let cancelled = false;
 
 		async function load() {
+			setActiveYearMonth(selectedYearMonth);
 			if (!hasSupabaseEnv) {
 				setLoading(false);
 				return;
@@ -508,7 +521,7 @@ function App() {
 		return () => {
 			cancelled = true;
 		};
-	}, [verifiedUserCode]);
+	}, [selectedYearMonth, verifiedUserCode]);
 
 	const refreshUsdKrwRate = useCallback(async (silent = false) => {
 		setLoadingFxRate(true);
@@ -643,6 +656,27 @@ function App() {
 		[expenseItems],
 	);
 
+	const consumptionExpenseTotal = useMemo(
+		() =>
+			expenseItems
+				.filter((item) => item.kind === "CONSUMPTION")
+				.reduce((sum, item) => sum + item.amount, 0),
+		[expenseItems],
+	);
+
+	const incomeTotal = useMemo(
+		() =>
+			expenseItems
+				.filter((item) => item.kind === "INCOME")
+				.reduce((sum, item) => sum + item.amount, 0),
+		[expenseItems],
+	);
+
+	const actualSpentTotal = useMemo(
+		() => overview.actualSpent + consumptionExpenseTotal,
+		[consumptionExpenseTotal, overview.actualSpent],
+	);
+
 	const installmentMonthlyTotal = useMemo(() => {
 		const referenceDateInput = currentMonthRange.toDate;
 		return installments.reduce((sum, item) => {
@@ -760,7 +794,8 @@ function App() {
 
 	const monthlyRemaining = useMemo(() => {
 		return (
-			overview.salary -
+			overview.salary +
+			incomeTotal -
 			(fixedExpenseTotal +
 				variableExpenseTotal +
 				installmentMonthlyTotal +
@@ -768,6 +803,7 @@ function App() {
 		);
 	}, [
 		overview.salary,
+		incomeTotal,
 		fixedExpenseTotal,
 		variableExpenseTotal,
 		installmentMonthlyTotal,
@@ -862,6 +898,8 @@ function App() {
 			INSTALLMENT: "INSTALLMENTS",
 			FIXED: "FIXED_EXPENSE",
 			VARIABLE: "VARIABLE_EXPENSE",
+			CONSUMPTION: "CONSUMPTION_EXPENSE",
+			INCOME: "INCOME_EXPENSE",
 		};
 
 		setCopyingSectionTarget(target);
@@ -871,7 +909,12 @@ function App() {
 				repositoryTargetMap[target],
 			);
 
-			if (target === "FIXED" || target === "VARIABLE") {
+			if (
+				target === "FIXED" ||
+				target === "VARIABLE" ||
+				target === "CONSUMPTION" ||
+				target === "INCOME"
+			) {
 				const expenseData = await fetchExpenseItems();
 				setExpenseItems(expenseData);
 			} else if (target === "STOCK") {
@@ -888,9 +931,13 @@ function App() {
 					? "고정 지출"
 					: target === "VARIABLE"
 						? "비고정 지출"
-						: target === "STOCK"
-							? "주식"
-							: "적금";
+						: target === "CONSUMPTION"
+							? "소비"
+							: target === "INCOME"
+								? "수입"
+								: target === "STOCK"
+									? "주식"
+									: "적금";
 			setMessage(
 				`${sectionLabel} 데이터를 ${sourceYearMonth} 기준으로 불러왔습니다.`,
 			);
@@ -930,7 +977,10 @@ function App() {
 				["구분", "값"],
 				["기준 연월", selectedYearMonth],
 				["월급", overview.salary],
-				["실제 사용 금액", overview.actualSpent],
+				["수입 섹션 자동 합산", incomeTotal],
+				["실제 사용 금액(직접 입력)", overview.actualSpent],
+				["소비 섹션 자동 합산", consumptionExpenseTotal],
+				["실제 사용 금액(최종)", actualSpentTotal],
 				["월별 실현손익", overview.realizedPnl],
 				["토스증권 예치금", overview.tossDepositAmount],
 				["토스증권 통화", overview.tossDepositCurrency],
@@ -1012,9 +1062,20 @@ function App() {
 			["총 저축", yearlyTotalSaving],
 			[],
 			["월별 결산"],
-			["월", "월 잔액", "실제 사용", "순잔액", "실현손익", "월말 최종 저축액"],
+			[
+				"월",
+				"월급",
+				"추가 수입",
+				"월 잔액",
+				"실제 사용",
+				"순잔액",
+				"실현손익",
+				"월말 최종 저축액",
+			],
 			...yearlySettlementRows.map((row) => [
 				row.monthLabel,
+				row.salary,
+				row.income,
 				row.plannedRemaining,
 				row.actualSpent,
 				row.netAfterActual,
@@ -1050,9 +1111,15 @@ function App() {
 				...prev,
 				[kind]: { ...defaultExpenseDraft },
 			}));
-			setMessage(
-				`${kind === "FIXED" ? "고정" : "비고정"} 지출 항목이 저장되었습니다.`,
-			);
+			const kindLabel =
+				kind === "FIXED"
+					? "고정 지출"
+					: kind === "VARIABLE"
+						? "비고정 지출"
+						: kind === "CONSUMPTION"
+							? "소비"
+							: "수입";
+			setMessage(`${kindLabel} 항목이 저장되었습니다.`);
 		} catch (error) {
 			setMessage(extractError(error));
 		} finally {
@@ -1426,6 +1493,14 @@ function App() {
 		() => expenseItems.filter((item) => item.kind === "VARIABLE"),
 		[expenseItems],
 	);
+	const consumptionExpenseItems = useMemo(
+		() => expenseItems.filter((item) => item.kind === "CONSUMPTION"),
+		[expenseItems],
+	);
+	const incomeExpenseItems = useMemo(
+		() => expenseItems.filter((item) => item.kind === "INCOME"),
+		[expenseItems],
+	);
 	const isSelectedMonthEmpty = useMemo(
 		() =>
 			overview.salary === 0 &&
@@ -1444,6 +1519,7 @@ function App() {
 				yearMonth: string;
 				monthLabel: string;
 				salary: number;
+				income: number;
 				fixedExpense: number;
 				variableExpense: number;
 				plannedRemaining: number;
@@ -1459,17 +1535,23 @@ function App() {
 		const fxRate = usdKrwRate ?? 0;
 		const expenseByMonth = new Map<
 			string,
-			{ fixed: number; variable: number }
+			{ fixed: number; variable: number; consumption: number; income: number }
 		>();
 		for (const item of settlementData.expenses) {
 			const current = expenseByMonth.get(item.yearMonth) ?? {
 				fixed: 0,
 				variable: 0,
+				consumption: 0,
+				income: 0,
 			};
 			if (item.kind === "FIXED") {
 				current.fixed += item.amount;
-			} else {
+			} else if (item.kind === "VARIABLE") {
 				current.variable += item.amount;
+			} else if (item.kind === "CONSUMPTION") {
+				current.consumption += item.amount;
+			} else {
+				current.income += item.amount;
 			}
 			expenseByMonth.set(item.yearMonth, current);
 		}
@@ -1557,6 +1639,8 @@ function App() {
 			const expenseSnapshot = expenseByMonth.get(yearMonth) ?? {
 				fixed: 0,
 				variable: 0,
+				consumption: 0,
+				income: 0,
 			};
 			const installmentSnapshot = installmentByMonth.get(yearMonth) ?? {
 				monthly: 0,
@@ -1567,10 +1651,12 @@ function App() {
 				principal: 0,
 			};
 			const salary = overviewSnapshot?.salary ?? 0;
-			const actualSpent = overviewSnapshot?.actualSpent ?? 0;
+			const actualSpent =
+				(overviewSnapshot?.actualSpent ?? 0) + expenseSnapshot.consumption;
 			const realizedPnl = overviewSnapshot?.realizedPnl ?? 0;
 			const plannedRemaining =
-				salary -
+				salary +
+				expenseSnapshot.income -
 				(expenseSnapshot.fixed +
 					expenseSnapshot.variable +
 					installmentSnapshot.monthly +
@@ -1579,13 +1665,13 @@ function App() {
 			const principalTotal =
 				installmentSnapshot.principal + holdingSnapshot.principal;
 			const hasSavingDataForMonth = hasInstallmentData || hasHoldingData;
-
 			const cumulativeSaving = hasSavingDataForMonth ? principalTotal : 0;
 
 			return {
 				yearMonth,
 				monthLabel: `${Number.parseInt(yearMonth.slice(5), 10)}월`,
 				salary,
+				income: expenseSnapshot.income,
 				fixedExpense: expenseSnapshot.fixed,
 				variableExpense: expenseSnapshot.variable,
 				plannedRemaining,
@@ -1599,7 +1685,11 @@ function App() {
 		});
 	}, [selectedYearText, settlementData, usdKrwRate]);
 	const yearlyTotalIncome = useMemo(
-		() => yearlySettlementRows.reduce((sum, row) => sum + row.salary, 0),
+		() =>
+			yearlySettlementRows.reduce(
+				(sum, row) => sum + row.salary + row.income,
+				0,
+			),
 		[yearlySettlementRows],
 	);
 	const yearlyTotalExpense = useMemo(
@@ -1909,15 +1999,20 @@ function App() {
 							<div className="mt-6 border-t border-slate-200 pt-4">
 								<h2 className="text-base font-semibold">4. 월 잔액 요약</h2>
 								<p className="mt-2 text-xs text-slate-600">
-									공식: 월급 - (고정지출 + 비고정지출 + 적금 월 고정지출 + 주식
-									모으기 월 고정지출)
+									공식: 월급 + 수입 - (고정지출 + 비고정지출 + 적금 월 고정지출
+									+ 주식 모으기 월 고정지출)
 								</p>
 								<div className="mt-3 grid gap-2">
 									<SummaryCard label="월급" value={overview.salary} />
+									<SummaryCard label="수입(자동합산)" value={incomeTotal} />
 									<SummaryCard label="고정지출" value={fixedExpenseTotal} />
 									<SummaryCard
 										label="비고정지출"
 										value={variableExpenseTotal}
+									/>
+									<SummaryCard
+										label="소비 지출(자동합산)"
+										value={consumptionExpenseTotal}
 									/>
 									<SummaryCard
 										label="적금 월 고정지출"
@@ -1938,7 +2033,9 @@ function App() {
 									월 잔액: {formatKrw(monthlyRemaining)}
 								</div>
 								<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">실제 사용 금액</p>
+									<p className="text-xs text-slate-500">
+										실제 사용 금액 (직접 입력)
+									</p>
 									<div className="mt-2 flex items-center gap-2">
 										<CurrencyInput
 											value={overview.actualSpent}
@@ -1956,7 +2053,13 @@ function App() {
 										</Button>
 									</div>
 									<p className="mt-1 text-xs text-slate-500">
-										{formatKrw(overview.actualSpent)}
+										직접 입력: {formatKrw(overview.actualSpent)}
+									</p>
+									<p className="mt-1 text-xs text-slate-500">
+										소비 섹션 자동 합산: {formatKrw(consumptionExpenseTotal)}
+									</p>
+									<p className="mt-1 text-sm font-semibold text-slate-700">
+										최종 실제 사용 금액: {formatKrw(actualSpentTotal)}
 									</p>
 								</div>
 								<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -3899,6 +4002,273 @@ function App() {
 											</div>
 										</div>
 									</section>
+
+									<section
+										id="consumption-section"
+										className="self-start rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-12 lg:col-start-1 lg:row-start-5 lg:h-full lg:overflow-y-auto lg:pr-3"
+									>
+										<h2 className="text-xl font-semibold">소비</h2>
+										<SectionYearMonthImportControl
+											onOpen={() => setSectionImportModalTarget("CONSUMPTION")}
+											disabled={copyingSectionTarget !== null}
+											loading={copyingSectionTarget === "CONSUMPTION"}
+										/>
+										<p className="mt-2 text-sm text-slate-600">
+											계좌이체 등 예외적인 소비 항목을 기록합니다. 이 섹션
+											합계는 실제 사용 금액에 자동 합산됩니다.
+										</p>
+										<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+											<div className="flex items-center justify-between">
+												<h3 className="font-semibold">소비 항목</h3>
+												<span className="text-sm font-medium text-slate-700">
+													합계 {formatKrw(consumptionExpenseTotal)}
+												</span>
+											</div>
+											<div className="mt-3">
+												{consumptionExpenseItems.length === 0 ? (
+													<p className="text-sm text-slate-500">
+														등록된 소비 항목이 없습니다.
+													</p>
+												) : null}
+												{consumptionExpenseItems.length > 0 ? (
+													<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+														{consumptionExpenseItems.map((item) => {
+															const draft = expenseDrafts[item.id];
+															if (draft === undefined) {
+																return null;
+															}
+															return (
+																<div
+																	key={item.id}
+																	className="rounded-lg border border-slate-200 bg-white p-2.5"
+																>
+																	<div className="grid grid-cols-1 gap-2">
+																		<input
+																			className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+																			value={draft.name}
+																			onChange={(event) =>
+																				setExpenseDrafts((prev) => ({
+																					...prev,
+																					[item.id]: {
+																						...draft,
+																						name: event.target.value,
+																					},
+																				}))
+																			}
+																		/>
+																		<CurrencyInput
+																			value={draft.amount}
+																			onChange={(value) =>
+																				setExpenseDrafts((prev) => ({
+																					...prev,
+																					[item.id]: {
+																						...draft,
+																						amount: value,
+																					},
+																				}))
+																			}
+																		/>
+																	</div>
+																	<div className="mt-2 flex justify-end gap-1.5">
+																		<Button
+																			type="button"
+																			size="xs"
+																			onClick={() => handleUpdateExpense(item)}
+																		>
+																			저장
+																		</Button>
+																		<Button
+																			type="button"
+																			size="xs"
+																			variant="outline"
+																			onClick={() =>
+																				handleDeleteExpense(item.id)
+																			}
+																		>
+																			삭제
+																		</Button>
+																	</div>
+																</div>
+															);
+														})}
+													</div>
+												) : null}
+											</div>
+											<div className="mt-4 border-t border-slate-200 pt-4">
+												<div className="grid grid-cols-3 gap-2">
+													<input
+														className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
+														placeholder="예: 계좌이체, 경조사비, 일시 지출"
+														value={expenseForms.CONSUMPTION.name}
+														onChange={(event) =>
+															setExpenseForms((prev) => ({
+																...prev,
+																CONSUMPTION: {
+																	...prev.CONSUMPTION,
+																	name: event.target.value,
+																},
+															}))
+														}
+													/>
+													<CurrencyInput
+														value={expenseForms.CONSUMPTION.amount}
+														onChange={(value) =>
+															setExpenseForms((prev) => ({
+																...prev,
+																CONSUMPTION: {
+																	...prev.CONSUMPTION,
+																	amount: value,
+																},
+															}))
+														}
+													/>
+												</div>
+												<Button
+													type="button"
+													className="mt-2"
+													onClick={() => handleAddExpense("CONSUMPTION")}
+													disabled={submittingExpenseKind === "CONSUMPTION"}
+												>
+													{submittingExpenseKind === "CONSUMPTION"
+														? "추가 중..."
+														: "소비 항목 추가"}
+												</Button>
+											</div>
+										</div>
+									</section>
+									<section
+										id="income-section"
+										className="self-start rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-12 lg:col-start-1 lg:row-start-6 lg:h-full lg:overflow-y-auto lg:pr-3"
+									>
+										<h2 className="text-xl font-semibold">수입</h2>
+										<SectionYearMonthImportControl
+											onOpen={() => setSectionImportModalTarget("INCOME")}
+											disabled={copyingSectionTarget !== null}
+											loading={copyingSectionTarget === "INCOME"}
+										/>
+										<p className="mt-2 text-sm text-slate-600">
+											예상치 못하게 들어온 수입 항목을 기록합니다. 이 섹션
+											합계는 월 잔액에 자동 가산됩니다.
+										</p>
+										<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+											<div className="flex items-center justify-between">
+												<h3 className="font-semibold">수입 항목</h3>
+												<span className="text-sm font-medium text-slate-700">
+													합계 {formatKrw(incomeTotal)}
+												</span>
+											</div>
+											<div className="mt-3">
+												{incomeExpenseItems.length === 0 ? (
+													<p className="text-sm text-slate-500">
+														등록된 수입 항목이 없습니다.
+													</p>
+												) : null}
+												{incomeExpenseItems.length > 0 ? (
+													<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+														{incomeExpenseItems.map((item) => {
+															const draft = expenseDrafts[item.id];
+															if (draft === undefined) {
+																return null;
+															}
+															return (
+																<div
+																	key={item.id}
+																	className="rounded-lg border border-slate-200 bg-white p-2.5"
+																>
+																	<div className="grid grid-cols-1 gap-2">
+																		<input
+																			className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+																			value={draft.name}
+																			onChange={(event) =>
+																				setExpenseDrafts((prev) => ({
+																					...prev,
+																					[item.id]: {
+																						...draft,
+																						name: event.target.value,
+																					},
+																				}))
+																			}
+																		/>
+																		<CurrencyInput
+																			value={draft.amount}
+																			onChange={(value) =>
+																				setExpenseDrafts((prev) => ({
+																					...prev,
+																					[item.id]: {
+																						...draft,
+																						amount: value,
+																					},
+																				}))
+																			}
+																		/>
+																	</div>
+																	<div className="mt-2 flex justify-end gap-1.5">
+																		<Button
+																			type="button"
+																			size="xs"
+																			onClick={() => handleUpdateExpense(item)}
+																		>
+																			저장
+																		</Button>
+																		<Button
+																			type="button"
+																			size="xs"
+																			variant="outline"
+																			onClick={() =>
+																				handleDeleteExpense(item.id)
+																			}
+																		>
+																			삭제
+																		</Button>
+																	</div>
+																</div>
+															);
+														})}
+													</div>
+												) : null}
+											</div>
+											<div className="mt-4 border-t border-slate-200 pt-4">
+												<div className="grid grid-cols-3 gap-2">
+													<input
+														className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
+														placeholder="예: 환급금, 상여금, 기타 수입"
+														value={expenseForms.INCOME.name}
+														onChange={(event) =>
+															setExpenseForms((prev) => ({
+																...prev,
+																INCOME: {
+																	...prev.INCOME,
+																	name: event.target.value,
+																},
+															}))
+														}
+													/>
+													<CurrencyInput
+														value={expenseForms.INCOME.amount}
+														onChange={(value) =>
+															setExpenseForms((prev) => ({
+																...prev,
+																INCOME: {
+																	...prev.INCOME,
+																	amount: value,
+																},
+															}))
+														}
+													/>
+												</div>
+												<Button
+													type="button"
+													className="mt-2"
+													onClick={() => handleAddExpense("INCOME")}
+													disabled={submittingExpenseKind === "INCOME"}
+												>
+													{submittingExpenseKind === "INCOME"
+														? "추가 중..."
+														: "수입 항목 추가"}
+												</Button>
+											</div>
+										</div>
+									</section>
 								</div>
 							)
 						) : (
@@ -3989,6 +4359,7 @@ function App() {
 												<thead className="bg-slate-50 text-slate-600">
 													<tr>
 														<th className="px-3 py-2 text-left">월</th>
+														<th className="px-3 py-2 text-right">추가 수입</th>
 														<th className="px-3 py-2 text-right">월 잔액</th>
 														<th className="px-3 py-2 text-right">실제 사용</th>
 														<th className="px-3 py-2 text-right">순잔액</th>
@@ -4005,6 +4376,9 @@ function App() {
 															className="border-t border-slate-100"
 														>
 															<td className="px-3 py-2">{row.monthLabel}</td>
+															<td className="px-3 py-2 text-right">
+																{formatKrw(row.income)}
+															</td>
 															<td className="px-3 py-2 text-right">
 																{formatKrw(row.plannedRemaining)}
 															</td>
@@ -4353,7 +4727,13 @@ function getSectionImportTargetLabel(target: SectionImportTarget): string {
 	if (target === "FIXED") {
 		return "고정 지출";
 	}
-	return "비고정 지출";
+	if (target === "VARIABLE") {
+		return "비고정 지출";
+	}
+	if (target === "CONSUMPTION") {
+		return "소비";
+	}
+	return "수입";
 }
 
 function parseTabFromSearch(search: string): AppTab {
