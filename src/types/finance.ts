@@ -29,6 +29,7 @@ export type FinanceOverview = {
 	salary: number;
 	actualSpent: number;
 	realizedPnl: number;
+	memo: string;
 	tossDepositAmount: number;
 	tossDepositCurrency: "KRW" | "USD";
 	samsungDepositAmount: number;

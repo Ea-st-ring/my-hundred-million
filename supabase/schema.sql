@@ -6,6 +6,7 @@ create table if not exists public.finance_overview (
 	salary bigint not null default 0,
 	actual_spent bigint not null default 0,
 	realized_pnl bigint not null default 0,
+	memo text not null default '',
 	toss_deposit_amount bigint not null default 0,
 	toss_deposit_currency text not null default 'KRW' check (toss_deposit_currency in ('KRW', 'USD')),
 	samsung_deposit_amount bigint not null default 0,
@@ -218,6 +219,9 @@ add column if not exists actual_spent bigint not null default 0;
 
 alter table public.finance_overview
 add column if not exists realized_pnl bigint not null default 0;
+
+alter table public.finance_overview
+add column if not exists memo text not null default '';
 
 alter table public.finance_overview
 drop constraint if exists finance_overview_id_check;

@@ -105,6 +105,7 @@ const defaultOverview: FinanceOverview = {
 	salary: 0,
 	actualSpent: 0,
 	realizedPnl: 0,
+	memo: "",
 	tossDepositAmount: 0,
 	tossDepositCurrency: "KRW",
 	samsungDepositAmount: 0,
@@ -821,6 +822,7 @@ function App() {
 				salary: overview.salary,
 				actualSpent: overview.actualSpent,
 				realizedPnl: overview.realizedPnl,
+				memo: overview.memo,
 				tossDepositAmount: overview.tossDepositAmount,
 				tossDepositCurrency: overview.tossDepositCurrency,
 				samsungDepositAmount: overview.samsungDepositAmount,
@@ -982,6 +984,7 @@ function App() {
 				["소비 섹션 자동 합산", consumptionExpenseTotal],
 				["실제 사용 금액(최종)", actualSpentTotal],
 				["월별 실현손익", overview.realizedPnl],
+				["월 메모", overview.memo],
 				["토스증권 예치금", overview.tossDepositAmount],
 				["토스증권 통화", overview.tossDepositCurrency],
 				["삼성증권 예치금", overview.samsungDepositAmount],
@@ -1506,6 +1509,7 @@ function App() {
 			overview.salary === 0 &&
 			overview.actualSpent === 0 &&
 			overview.realizedPnl === 0 &&
+			overview.memo.trim().length === 0 &&
 			overview.tossDepositAmount === 0 &&
 			overview.samsungDepositAmount === 0 &&
 			expenseItems.length === 0 &&
@@ -2092,6 +2096,33 @@ function App() {
 										{overview.realizedPnl >= 0 ? "+" : "-"}
 										{formatKrw(Math.abs(overview.realizedPnl))}
 									</p>
+								</div>
+								<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+									<p className="text-xs text-slate-500">월 메모</p>
+									<textarea
+										className="mt-2 min-h-[120px] w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-blue-100 transition focus:border-blue-400 focus:ring-2"
+										value={overview.memo}
+										onChange={(event) =>
+											setOverview((prev) => ({
+												...prev,
+												memo: event.target.value,
+											}))
+										}
+										placeholder="이번 달 메모를 기록해두세요. (예: 큰 지출 사유, 투자 계획, 체크할 일)"
+									/>
+									<div className="mt-2 flex items-center justify-between gap-2">
+										<p className="text-xs text-slate-500">
+											{overview.memo.length.toLocaleString()}자
+										</p>
+										<Button
+											type="button"
+											onClick={handleSaveOverview}
+											disabled={savingOverviewState}
+											className="shrink-0"
+										>
+											{savingOverviewState ? "저장 중..." : "메모 저장"}
+										</Button>
+									</div>
 								</div>
 							</div>
 						</div>

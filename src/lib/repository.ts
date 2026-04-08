@@ -21,6 +21,7 @@ type OverviewRow = {
 	salary: number;
 	actual_spent: number;
 	realized_pnl: number;
+	memo: string | null;
 	toss_deposit_amount: number;
 	toss_deposit_currency: "KRW" | "USD";
 	samsung_deposit_amount: number;
@@ -270,6 +271,7 @@ export async function verifyAndActivateUserCode(
 			salary: 0,
 			actual_spent: 0,
 			realized_pnl: 0,
+			memo: "",
 			toss_deposit_amount: 0,
 			toss_deposit_currency: "KRW",
 			samsung_deposit_amount: 0,
@@ -311,7 +313,7 @@ export async function copyPreviousMonthData(): Promise<void> {
 		client
 			.from("finance_overview")
 			.select(
-				"id, salary, actual_spent, toss_deposit_amount, samsung_deposit_amount",
+				"id, salary, actual_spent, memo, toss_deposit_amount, samsung_deposit_amount",
 			)
 			.eq("user_code", userCode)
 			.eq("year_month", yearMonth)
@@ -319,6 +321,7 @@ export async function copyPreviousMonthData(): Promise<void> {
 				id: number;
 				salary: number;
 				actual_spent: number;
+				memo: string | null;
 				toss_deposit_amount: number;
 				samsung_deposit_amount: number;
 			}>(),
@@ -346,6 +349,7 @@ export async function copyPreviousMonthData(): Promise<void> {
 		(currentOverview !== null &&
 			(currentOverview.salary !== 0 ||
 				currentOverview.actual_spent !== 0 ||
+				(currentOverview.memo ?? "").trim().length > 0 ||
 				currentOverview.toss_deposit_amount !== 0 ||
 				currentOverview.samsung_deposit_amount !== 0)) ||
 		(currentExpenses ?? []).length > 0 ||
@@ -443,17 +447,21 @@ export async function copyPreviousMonthData(): Promise<void> {
 	}
 
 	if (previousOverview !== null) {
-		const { error } = await client.from("finance_overview").insert({
-			user_code: userCode,
-			year_month: yearMonth,
-			salary: previousOverview.salary,
-			actual_spent: 0,
-			realized_pnl: 0,
-			toss_deposit_amount: previousOverview.toss_deposit_amount,
-			toss_deposit_currency: previousOverview.toss_deposit_currency,
-			samsung_deposit_amount: previousOverview.samsung_deposit_amount,
-			samsung_deposit_currency: previousOverview.samsung_deposit_currency,
-		});
+		const { error } = await client.from("finance_overview").upsert(
+			{
+				user_code: userCode,
+				year_month: yearMonth,
+				salary: previousOverview.salary,
+				actual_spent: 0,
+				realized_pnl: 0,
+				memo: "",
+				toss_deposit_amount: previousOverview.toss_deposit_amount,
+				toss_deposit_currency: previousOverview.toss_deposit_currency,
+				samsung_deposit_amount: previousOverview.samsung_deposit_amount,
+				samsung_deposit_currency: previousOverview.samsung_deposit_currency,
+			},
+			{ onConflict: "user_code,year_month" },
+		);
 		if (error !== null) {
 			throw new Error(error.message);
 		}
@@ -751,6 +759,7 @@ function mapOverview(row: OverviewRow): FinanceOverview {
 		salary: row.salary,
 		actualSpent: row.actual_spent,
 		realizedPnl: row.realized_pnl,
+		memo: row.memo ?? "",
 		tossDepositAmount: row.toss_deposit_amount,
 		tossDepositCurrency: row.toss_deposit_currency,
 		samsungDepositAmount: row.samsung_deposit_amount,
@@ -836,7 +845,7 @@ export async function fetchOverview(): Promise<FinanceOverview> {
 	const { data, error } = await client
 		.from("finance_overview")
 		.select(
-			"id, salary, actual_spent, realized_pnl, toss_deposit_amount, toss_deposit_currency, samsung_deposit_amount, samsung_deposit_currency, user_code",
+			"id, salary, actual_spent, realized_pnl, memo, toss_deposit_amount, toss_deposit_currency, samsung_deposit_amount, samsung_deposit_currency, user_code",
 		)
 		.eq("user_code", userCode)
 		.eq("year_month", yearMonth)
@@ -854,7 +863,7 @@ export async function fetchOverview(): Promise<FinanceOverview> {
 		.from("finance_overview")
 		.insert({ user_code: userCode, year_month: yearMonth })
 		.select(
-			"id, salary, actual_spent, realized_pnl, toss_deposit_amount, toss_deposit_currency, samsung_deposit_amount, samsung_deposit_currency, user_code",
+			"id, salary, actual_spent, realized_pnl, memo, toss_deposit_amount, toss_deposit_currency, samsung_deposit_amount, samsung_deposit_currency, user_code",
 		)
 		.single<OverviewRow>();
 
@@ -878,6 +887,7 @@ export async function saveOverview(
 			salary: input.salary,
 			actual_spent: input.actualSpent,
 			realized_pnl: input.realizedPnl,
+			memo: input.memo,
 			toss_deposit_amount: input.tossDepositAmount,
 			toss_deposit_currency: input.tossDepositCurrency,
 			samsung_deposit_amount: input.samsungDepositAmount,
