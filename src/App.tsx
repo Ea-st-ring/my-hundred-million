@@ -250,6 +250,7 @@ function App() {
 	const [usdKrwRate, setUsdKrwRate] = useState<number | null>(null);
 	const [usdKrwUpdatedAt, setUsdKrwUpdatedAt] = useState<string | null>(null);
 	const [loadingFxRate, setLoadingFxRate] = useState(false);
+	const [excludedMonths, setExcludedMonths] = useState<Set<number>>(new Set());
 	const latestQuoteUpdatedAt = useMemo(() => {
 		let maxTime = 0;
 		let latest: string | null = null;
@@ -1688,34 +1689,42 @@ function App() {
 			};
 		});
 	}, [selectedYearText, settlementData, usdKrwRate]);
+	const filteredSettlementRows = useMemo(
+		() =>
+			yearlySettlementRows.filter(
+				(row) =>
+					!excludedMonths.has(Number.parseInt(row.yearMonth.slice(5), 10)),
+			),
+		[yearlySettlementRows, excludedMonths],
+	);
 	const yearlyTotalIncome = useMemo(
 		() =>
-			yearlySettlementRows.reduce(
-				(sum, row) => sum + row.salary + row.income,
+			filteredSettlementRows.reduce(
+				(sum, row) => sum + row.plannedRemaining,
 				0,
 			),
-		[yearlySettlementRows],
+		[filteredSettlementRows],
 	);
 	const yearlyTotalExpense = useMemo(
 		() =>
-			yearlySettlementRows.reduce(
+			filteredSettlementRows.reduce(
 				(sum, row) =>
 					sum + row.fixedExpense + row.variableExpense + row.actualSpent,
 				0,
 			),
-		[yearlySettlementRows],
+		[filteredSettlementRows],
 	);
 	const yearlyTotalSaving = useMemo(() => {
-		const lastNonEmptyRow = [...yearlySettlementRows]
+		const lastNonEmptyRow = [...filteredSettlementRows]
 			.reverse()
 			.find((row) => row.hasSavingData);
 		return lastNonEmptyRow?.cumulativeSaving ?? 0;
-	}, [yearlySettlementRows]);
+	}, [filteredSettlementRows]);
 	const latestSavingYearMonth = useMemo(
 		() =>
-			[...yearlySettlementRows].reverse().find((row) => row.hasSavingData)
+			[...filteredSettlementRows].reverse().find((row) => row.hasSavingData)
 				?.yearMonth ?? null,
-		[yearlySettlementRows],
+		[filteredSettlementRows],
 	);
 	const latestSavingMonthLabel = useMemo(() => {
 		if (latestSavingYearMonth === null) {
@@ -4309,6 +4318,44 @@ function App() {
 									1) 월 잔액 - 실제 사용 금액, 2) 월말 기준 최종 저축액(주식 +
 									적금)을 확인합니다.
 								</p>
+								<div className="mt-4 flex flex-wrap gap-2">
+									{Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+										const excluded = excludedMonths.has(month);
+										return (
+											<button
+												key={month}
+												type="button"
+												onClick={() =>
+													setExcludedMonths((prev) => {
+														const next = new Set(prev);
+														if (excluded) {
+															next.delete(month);
+														} else {
+															next.add(month);
+														}
+														return next;
+													})
+												}
+												className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+													excluded
+														? "border-slate-200 bg-slate-100 text-slate-400 line-through"
+														: "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+												}`}
+											>
+												{month}월
+											</button>
+										);
+									})}
+									{excludedMonths.size > 0 && (
+										<button
+											type="button"
+											onClick={() => setExcludedMonths(new Set())}
+											className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-500 hover:bg-rose-100"
+										>
+											초기화
+										</button>
+									)}
+								</div>
 								{loadingSettlementData ? (
 									<p className="mt-4 text-sm text-slate-500">
 										결산 데이터를 불러오는 중...
@@ -4401,49 +4448,56 @@ function App() {
 													</tr>
 												</thead>
 												<tbody>
-													{yearlySettlementRows.map((row) => (
-														<tr
-															key={row.yearMonth}
-															className="border-t border-slate-100"
-														>
-															<td className="px-3 py-2">{row.monthLabel}</td>
-															<td className="px-3 py-2 text-right">
-																{formatKrw(row.income)}
-															</td>
-															<td className="px-3 py-2 text-right">
-																{formatKrw(row.plannedRemaining)}
-															</td>
-															<td className="px-3 py-2 text-right">
-																{formatKrw(row.actualSpent)}
-															</td>
-															<td className="px-3 py-2 text-right">
-																<span
-																	className={
-																		row.netAfterActual >= 0
-																			? "text-emerald-600"
-																			: "text-rose-600"
-																	}
-																>
-																	{formatKrw(row.netAfterActual)}
-																</span>
-															</td>
-															<td className="px-3 py-2 text-right">
-																<span
-																	className={
-																		row.realizedPnl >= 0
-																			? "text-emerald-600"
-																			: "text-rose-600"
-																	}
-																>
-																	{row.realizedPnl >= 0 ? "+" : "-"}
-																	{formatKrw(Math.abs(row.realizedPnl))}
-																</span>
-															</td>
-															<td className="px-3 py-2 text-right">
-																{formatKrw(row.cumulativeSaving)}
-															</td>
-														</tr>
-													))}
+													{yearlySettlementRows.map((row) => {
+														const monthNum = Number.parseInt(
+															row.yearMonth.slice(5),
+															10,
+														);
+														const isExcluded = excludedMonths.has(monthNum);
+														return (
+															<tr
+																key={row.yearMonth}
+																className={`border-t border-slate-100 ${isExcluded ? "opacity-30" : ""}`}
+															>
+																<td className="px-3 py-2">{row.monthLabel}</td>
+																<td className="px-3 py-2 text-right">
+																	{formatKrw(row.income)}
+																</td>
+																<td className="px-3 py-2 text-right">
+																	{formatKrw(row.plannedRemaining)}
+																</td>
+																<td className="px-3 py-2 text-right">
+																	{formatKrw(row.actualSpent)}
+																</td>
+																<td className="px-3 py-2 text-right">
+																	<span
+																		className={
+																			row.netAfterActual >= 0
+																				? "text-emerald-600"
+																				: "text-rose-600"
+																		}
+																	>
+																		{formatKrw(row.netAfterActual)}
+																	</span>
+																</td>
+																<td className="px-3 py-2 text-right">
+																	<span
+																		className={
+																			row.realizedPnl >= 0
+																				? "text-emerald-600"
+																				: "text-rose-600"
+																		}
+																	>
+																		{row.realizedPnl >= 0 ? "+" : "-"}
+																		{formatKrw(Math.abs(row.realizedPnl))}
+																	</span>
+																</td>
+																<td className="px-3 py-2 text-right">
+																	{formatKrw(row.cumulativeSaving)}
+																</td>
+															</tr>
+														);
+													})}
 												</tbody>
 											</table>
 										</div>
