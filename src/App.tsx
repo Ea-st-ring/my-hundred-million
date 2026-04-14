@@ -171,6 +171,14 @@ type SectionImportTarget =
 	| "CONSUMPTION"
 	| "INCOME";
 type SectionImportModalTarget = SectionImportTarget | null;
+const DASHBOARD_SECTION_TABS: SectionImportTarget[] = [
+	"STOCK",
+	"INSTALLMENT",
+	"FIXED",
+	"VARIABLE",
+	"CONSUMPTION",
+	"INCOME",
+];
 
 function App() {
 	const [overview, setOverview] = useState<FinanceOverview>(defaultOverview);
@@ -227,6 +235,8 @@ function App() {
 	const [activeTab, setActiveTab] = useState<AppTab>(() =>
 		getInitialTabFromQuery(),
 	);
+	const [activeDashboardSection, setActiveDashboardSection] =
+		useState<SectionImportTarget>("STOCK");
 	const [settlementData, setSettlementData] =
 		useState<SettlementDataset | null>(null);
 	const [loadingSettlementData, setLoadingSettlementData] = useState(false);
@@ -2216,365 +2226,1126 @@ function App() {
 						) : null}
 
 						{activeTab === "DASHBOARD" ? (
-							loading ? (
-								<section className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
-									데이터를 불러오는 중...
+							<>
+								<section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+									<div className="flex flex-wrap gap-2">
+										{DASHBOARD_SECTION_TABS.map((target) => {
+											const isActive = activeDashboardSection === target;
+											return (
+												<button
+													type="button"
+													key={target}
+													onClick={() => setActiveDashboardSection(target)}
+													className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+														isActive
+															? "border-blue-200 bg-blue-50 text-blue-700"
+															: "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+													}`}
+												>
+													{getSectionImportTargetLabel(target)}
+												</button>
+											);
+										})}
+									</div>
 								</section>
-							) : (
-								<div className="grid auto-rows-max items-start gap-6 lg:grid-cols-12 lg:auto-rows-[420px]">
-									<section
-										id="savings-stock-section"
-										className="self-start rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-12 lg:col-start-1 lg:row-start-1 lg:h-full lg:overflow-y-auto lg:pr-3"
-									>
-										<h2 className="text-xl font-semibold">
-											주식 (토스증권 / 삼성증권)
-										</h2>
-										<SectionYearMonthImportControl
-											onOpen={() => setSectionImportModalTarget("STOCK")}
-											disabled={copyingSectionTarget !== null}
-											loading={copyingSectionTarget === "STOCK"}
-										/>
-
-										<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5">
-											<div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
-												<span>
-													USD/KRW 환율:{" "}
-													{usdKrwRate === null
-														? "미연동"
-														: formatFxRate(usdKrwRate)}
-												</span>
-												<span>
-													기준 시각:{" "}
-													{usdKrwUpdatedAt === null
-														? "-"
-														: new Date(usdKrwUpdatedAt).toLocaleString("ko-KR")}
-												</span>
-												<span>
-													현재가 기준 시각:{" "}
-													{latestQuoteUpdatedAt === null
-														? "-"
-														: new Date(latestQuoteUpdatedAt).toLocaleString(
-																"ko-KR",
-															)}
-												</span>
-												<span>현재가 캐시: 30분</span>
-											</div>
-											{hasUsHoldings && usdKrwRate === null ? (
-												<p className="mt-2 text-xs text-amber-700">
-													미국 주식이 있어 월 납입 계산에 환율이 필요합니다.
-													환율을 갱신해주세요.
-												</p>
-											) : null}
-											<div className="mt-4 grid gap-3 lg:grid-cols-3">
-												<DashboardStatCard
-													title="주식 투입 금액"
-													value={formatKrw(
-														stockPerformanceSummary.investedTotalKrw,
-													)}
-													delta={
-														stockPerformanceSummary.comparableCount === 0
-															? null
-															: `(${
-																	stockPerformanceSummary.profitKrw >= 0
-																		? "+"
-																		: "-"
-																}${formatNumber(
-																	Math.abs(stockPerformanceSummary.profitKrw),
-																)}) (${
-																	stockPerformanceSummary.profitRate === null
-																		? "-"
-																		: `${stockPerformanceSummary.profitRate.toFixed(2)}%`
-																})`
-													}
-													deltaEmphasis={
-														stockPerformanceSummary.profitKrw >= 0
-															? "positive"
-															: "negative"
-													}
+								{loading ? (
+									<section className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+										데이터를 불러오는 중...
+									</section>
+								) : (
+									<div className="space-y-6">
+										{activeDashboardSection === "STOCK" ? (
+											<section
+												id="savings-stock-section"
+												className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+											>
+												<h2 className="text-xl font-semibold">
+													주식 (토스증권 / 삼성증권)
+												</h2>
+												<SectionYearMonthImportControl
+													onOpen={() => setSectionImportModalTarget("STOCK")}
+													disabled={copyingSectionTarget !== null}
+													loading={copyingSectionTarget === "STOCK"}
 												/>
-												<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-													<div className="flex items-center justify-between gap-2">
-														<p className="text-xs uppercase tracking-wide text-slate-500">
-															증권 계좌 예치금
+
+												<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5">
+													<div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+														<span>
+															USD/KRW 환율:{" "}
+															{usdKrwRate === null
+																? "미연동"
+																: formatFxRate(usdKrwRate)}
+														</span>
+														<span>
+															기준 시각:{" "}
+															{usdKrwUpdatedAt === null
+																? "-"
+																: new Date(usdKrwUpdatedAt).toLocaleString(
+																		"ko-KR",
+																	)}
+														</span>
+														<span>
+															현재가 기준 시각:{" "}
+															{latestQuoteUpdatedAt === null
+																? "-"
+																: new Date(latestQuoteUpdatedAt).toLocaleString(
+																		"ko-KR",
+																	)}
+														</span>
+														<span>현재가 캐시: 30분</span>
+													</div>
+													{hasUsHoldings && usdKrwRate === null ? (
+														<p className="mt-2 text-xs text-amber-700">
+															미국 주식이 있어 월 납입 계산에 환율이 필요합니다.
+															환율을 갱신해주세요.
 														</p>
-														<Button
-															type="button"
-															size="sm"
-															variant="outline"
-															onClick={() => setIsDepositModalOpen(true)}
-														>
-															입력
-														</Button>
-													</div>
-													<div className="mt-2 grid gap-2">
-														<div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-															<p className="text-xs text-slate-500">토스증권</p>
-															<p className="text-sm font-semibold text-slate-800">
-																{overview.tossDepositCurrency === "USD"
-																	? formatUsd(overview.tossDepositAmount)
-																	: formatKrw(overview.tossDepositAmount)}
-															</p>
-														</div>
-														<div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-															<p className="text-xs text-slate-500">삼성증권</p>
-															<p className="text-sm font-semibold text-slate-800">
-																{overview.samsungDepositCurrency === "USD"
-																	? formatUsd(overview.samsungDepositAmount)
-																	: formatKrw(overview.samsungDepositAmount)}
-															</p>
-														</div>
-													</div>
-												</div>
-												<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-													<p className="text-xs uppercase tracking-wide text-slate-500">
-														종목 관리
-													</p>
-													<div className="mt-2 flex gap-2">
-														<Button
-															type="button"
-															onClick={() => setIsHoldingFormModalOpen(true)}
-														>
-															보유 종목 추가
-														</Button>
-													</div>
-													<p className="mt-2 text-xs text-slate-500">
-														종목 검색과 신규 보유 등록은 같은 모달에서
-														진행합니다.
-													</p>
-												</div>
-											</div>
-											{stockPerformanceSummary.missingFxCount > 0 ||
-											stockPerformanceSummary.missingQuoteCount > 0 ? (
-												<p className="mt-2 text-xs text-slate-500">
-													일부 종목은 환율/현재가 미연동으로 수익률 계산에서
-													제외되었습니다. (환율 미연동{" "}
-													{stockPerformanceSummary.missingFxCount}개, 현재가
-													미연동 {stockPerformanceSummary.missingQuoteCount}개)
-												</p>
-											) : null}
-
-											<div className="mt-5 space-y-4">
-												{brokerGroups.map((group) => (
-													<div
-														className="rounded-xl border border-slate-200 bg-white p-4"
-														key={group.broker}
-													>
-														<h4 className="font-semibold">
-															{group.broker === "TOSS"
-																? "토스증권"
-																: "삼성증권"}{" "}
-															({group.items.length})
-														</h4>
-														<div className="mt-3 space-y-3">
-															{group.items.length === 0 ? (
-																<p className="text-sm text-slate-500">
-																	등록된 종목이 없습니다.
+													) : null}
+													<div className="mt-4 grid gap-3 lg:grid-cols-3">
+														<DashboardStatCard
+															title="주식 투입 금액"
+															value={formatKrw(
+																stockPerformanceSummary.investedTotalKrw,
+															)}
+															delta={
+																stockPerformanceSummary.comparableCount === 0
+																	? null
+																	: `(${
+																			stockPerformanceSummary.profitKrw >= 0
+																				? "+"
+																				: "-"
+																		}${formatNumber(
+																			Math.abs(
+																				stockPerformanceSummary.profitKrw,
+																			),
+																		)}) (${
+																			stockPerformanceSummary.profitRate ===
+																			null
+																				? "-"
+																				: `${stockPerformanceSummary.profitRate.toFixed(2)}%`
+																		})`
+															}
+															deltaEmphasis={
+																stockPerformanceSummary.profitKrw >= 0
+																	? "positive"
+																	: "negative"
+															}
+														/>
+														<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+															<div className="flex items-center justify-between gap-2">
+																<p className="text-xs uppercase tracking-wide text-slate-500">
+																	증권 계좌 예치금
 																</p>
-															) : null}
-															{group.items.map((item) => {
-																const draft = holdingDrafts[item.id];
-																if (draft === undefined) {
-																	return null;
-																}
-																const quote = quotes[item.id]?.price;
-																const currentPrice =
-																	typeof quote === "number" ? quote : null;
-																const isUsHolding = item.market === "US";
-																const evaluationAmountLocal =
-																	currentPrice === null
-																		? null
-																		: currentPrice * draft.quantity;
-																const costAmountLocal =
-																	draft.averagePrice * draft.quantity;
-																const profitAmountLocal =
-																	evaluationAmountLocal === null
-																		? null
-																		: evaluationAmountLocal - costAmountLocal;
-																const profitRate =
-																	profitAmountLocal === null ||
-																	costAmountLocal <= 0
-																		? null
-																		: (profitAmountLocal / costAmountLocal) *
-																			100;
-																const currentPriceKrw =
-																	isUsHolding &&
-																	currentPrice !== null &&
-																	usdKrwRate !== null
-																		? currentPrice * usdKrwRate
-																		: currentPrice;
-																const evaluationAmountKrw =
-																	isUsHolding &&
-																	evaluationAmountLocal !== null &&
-																	usdKrwRate !== null
-																		? evaluationAmountLocal * usdKrwRate
-																		: evaluationAmountLocal;
-																const profitAmountKrw =
-																	isUsHolding &&
-																	profitAmountLocal !== null &&
-																	usdKrwRate !== null
-																		? profitAmountLocal * usdKrwRate
-																		: profitAmountLocal;
-																const scheduleText =
-																	item.isAccumulating &&
-																	item.cadence !== null &&
-																	item.runDay !== null
-																		? item.cadence === "WEEKLY"
-																			? `매주 ${getWeekdayLabel(item.runDay)}`
-																			: `매달 ${item.runDay}일`
-																		: "잔고 전용";
-
-																return (
-																	<div
-																		key={item.id}
-																		className="rounded-lg border border-slate-200 p-3"
-																	>
-																		<div className="flex flex-wrap items-center justify-between gap-2">
-																			<div>
-																				<p className="font-medium">
-																					{item.name} ({item.symbol})
-																				</p>
-																				<p className="text-xs text-slate-500">
-																					유형:{" "}
-																					{item.isAccumulating
-																						? `모으기 (${scheduleText})`
-																						: scheduleText}
-																				</p>
-																				{isUsHolding ? (
-																					<p className="text-xs text-slate-500">
-																						현재가:{" "}
-																						{currentPrice === null
-																							? "미연동"
-																							: formatUsd(currentPrice)}{" "}
-																						/{" "}
-																						{currentPriceKrw === null
-																							? "환율 미연동"
-																							: formatKrw(currentPriceKrw)}
-																						<br />
-																						평가금액:{" "}
-																						{evaluationAmountLocal === null
-																							? "-"
-																							: formatUsd(
-																									evaluationAmountLocal,
-																								)}{" "}
-																						/{" "}
-																						{evaluationAmountKrw === null
-																							? "환율 미연동"
-																							: formatKrw(evaluationAmountKrw)}
-																					</p>
-																				) : (
-																					<p className="text-xs text-slate-500">
-																						현재가:{" "}
-																						{currentPrice === null
-																							? "미연동"
-																							: formatKrw(currentPrice)}{" "}
-																						/ 평가금액:{" "}
-																						{evaluationAmountLocal === null
-																							? "-"
-																							: formatKrw(
-																									evaluationAmountLocal,
-																								)}
-																					</p>
+																<Button
+																	type="button"
+																	size="sm"
+																	variant="outline"
+																	onClick={() => setIsDepositModalOpen(true)}
+																>
+																	입력
+																</Button>
+															</div>
+															<div className="mt-2 grid gap-2">
+																<div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+																	<p className="text-xs text-slate-500">
+																		토스증권
+																	</p>
+																	<p className="text-sm font-semibold text-slate-800">
+																		{overview.tossDepositCurrency === "USD"
+																			? formatUsd(overview.tossDepositAmount)
+																			: formatKrw(overview.tossDepositAmount)}
+																	</p>
+																</div>
+																<div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+																	<p className="text-xs text-slate-500">
+																		삼성증권
+																	</p>
+																	<p className="text-sm font-semibold text-slate-800">
+																		{overview.samsungDepositCurrency === "USD"
+																			? formatUsd(overview.samsungDepositAmount)
+																			: formatKrw(
+																					overview.samsungDepositAmount,
 																				)}
-																				<p
-																					className={`text-xs ${
-																						profitAmountLocal !== null &&
-																						profitAmountLocal >= 0
-																							? "text-emerald-600"
-																							: "text-rose-600"
-																					}`}
-																				>
-																					수익:{" "}
-																					{profitAmountLocal === null
-																						? "-"
-																						: isUsHolding
-																							? formatUsd(profitAmountLocal)
-																							: formatKrw(profitAmountLocal)}
-																					{profitRate === null
-																						? ""
-																						: ` (${profitRate.toFixed(2)}%)`}
-																					{isUsHolding
-																						? ` / ${
-																								profitAmountKrw === null
+																	</p>
+																</div>
+															</div>
+														</div>
+														<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+															<p className="text-xs uppercase tracking-wide text-slate-500">
+																종목 관리
+															</p>
+															<div className="mt-2 flex gap-2">
+																<Button
+																	type="button"
+																	onClick={() =>
+																		setIsHoldingFormModalOpen(true)
+																	}
+																>
+																	보유 종목 추가
+																</Button>
+															</div>
+															<p className="mt-2 text-xs text-slate-500">
+																종목 검색과 신규 보유 등록은 같은 모달에서
+																진행합니다.
+															</p>
+														</div>
+													</div>
+													{stockPerformanceSummary.missingFxCount > 0 ||
+													stockPerformanceSummary.missingQuoteCount > 0 ? (
+														<p className="mt-2 text-xs text-slate-500">
+															일부 종목은 환율/현재가 미연동으로 수익률 계산에서
+															제외되었습니다. (환율 미연동{" "}
+															{stockPerformanceSummary.missingFxCount}개, 현재가
+															미연동 {stockPerformanceSummary.missingQuoteCount}
+															개)
+														</p>
+													) : null}
+
+													<div className="mt-5 space-y-4">
+														{brokerGroups.map((group) => (
+															<div
+																className="rounded-xl border border-slate-200 bg-white p-4"
+																key={group.broker}
+															>
+																<h4 className="font-semibold">
+																	{group.broker === "TOSS"
+																		? "토스증권"
+																		: "삼성증권"}{" "}
+																	({group.items.length})
+																</h4>
+																<div className="mt-3 space-y-3">
+																	{group.items.length === 0 ? (
+																		<p className="text-sm text-slate-500">
+																			등록된 종목이 없습니다.
+																		</p>
+																	) : null}
+																	{group.items.map((item) => {
+																		const draft = holdingDrafts[item.id];
+																		if (draft === undefined) {
+																			return null;
+																		}
+																		const quote = quotes[item.id]?.price;
+																		const currentPrice =
+																			typeof quote === "number" ? quote : null;
+																		const isUsHolding = item.market === "US";
+																		const evaluationAmountLocal =
+																			currentPrice === null
+																				? null
+																				: currentPrice * draft.quantity;
+																		const costAmountLocal =
+																			draft.averagePrice * draft.quantity;
+																		const profitAmountLocal =
+																			evaluationAmountLocal === null
+																				? null
+																				: evaluationAmountLocal -
+																					costAmountLocal;
+																		const profitRate =
+																			profitAmountLocal === null ||
+																			costAmountLocal <= 0
+																				? null
+																				: (profitAmountLocal /
+																						costAmountLocal) *
+																					100;
+																		const currentPriceKrw =
+																			isUsHolding &&
+																			currentPrice !== null &&
+																			usdKrwRate !== null
+																				? currentPrice * usdKrwRate
+																				: currentPrice;
+																		const evaluationAmountKrw =
+																			isUsHolding &&
+																			evaluationAmountLocal !== null &&
+																			usdKrwRate !== null
+																				? evaluationAmountLocal * usdKrwRate
+																				: evaluationAmountLocal;
+																		const profitAmountKrw =
+																			isUsHolding &&
+																			profitAmountLocal !== null &&
+																			usdKrwRate !== null
+																				? profitAmountLocal * usdKrwRate
+																				: profitAmountLocal;
+																		const scheduleText =
+																			item.isAccumulating &&
+																			item.cadence !== null &&
+																			item.runDay !== null
+																				? item.cadence === "WEEKLY"
+																					? `매주 ${getWeekdayLabel(item.runDay)}`
+																					: `매달 ${item.runDay}일`
+																				: "잔고 전용";
+
+																		return (
+																			<div
+																				key={item.id}
+																				className="rounded-lg border border-slate-200 p-3"
+																			>
+																				<div className="flex flex-wrap items-center justify-between gap-2">
+																					<div>
+																						<p className="font-medium">
+																							{item.name} ({item.symbol})
+																						</p>
+																						<p className="text-xs text-slate-500">
+																							유형:{" "}
+																							{item.isAccumulating
+																								? `모으기 (${scheduleText})`
+																								: scheduleText}
+																						</p>
+																						{isUsHolding ? (
+																							<p className="text-xs text-slate-500">
+																								현재가:{" "}
+																								{currentPrice === null
+																									? "미연동"
+																									: formatUsd(
+																											currentPrice,
+																										)}{" "}
+																								/{" "}
+																								{currentPriceKrw === null
 																									? "환율 미연동"
-																									: formatKrw(profitAmountKrw)
-																							}`
-																						: ""}
-																				</p>
-																			</div>
-																			<div className="flex gap-2">
-																				<Button
-																					type="button"
-																					onClick={() =>
-																						handleUpdateHolding(item)
-																					}
-																				>
-																					수정 저장
-																				</Button>
-																				<Button
-																					type="button"
-																					variant="outline"
-																					onClick={() =>
-																						handleDeleteHolding(item.id)
-																					}
-																				>
-																					삭제
-																				</Button>
-																			</div>
-																		</div>
-																		<div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-6">
-																			<InlineNumberInput
-																				label="수량"
-																				value={draft.quantity}
-																				step={0.0001}
-																				onChange={(value) =>
-																					setHoldingDrafts((prev) => ({
-																						...prev,
-																						[item.id]: {
-																							...draft,
-																							quantity: value,
-																						},
-																					}))
-																				}
-																			/>
-																			<InlineNumberInput
-																				label={
-																					item.market === "US"
-																						? "평단가(USD)"
-																						: "평단가(원)"
-																				}
-																				value={draft.averagePrice}
-																				step={0.01}
-																				onChange={(value) =>
-																					setHoldingDrafts((prev) => ({
-																						...prev,
-																						[item.id]: {
-																							...draft,
-																							averagePrice: value,
-																						},
-																					}))
-																				}
-																			/>
-																			<div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-																				<label className="flex items-center gap-2 text-xs font-medium">
-																					<input
-																						type="checkbox"
-																						checked={draft.isAccumulating}
-																						onChange={(event) =>
+																									: formatKrw(currentPriceKrw)}
+																								<br />
+																								평가금액:{" "}
+																								{evaluationAmountLocal === null
+																									? "-"
+																									: formatUsd(
+																											evaluationAmountLocal,
+																										)}{" "}
+																								/{" "}
+																								{evaluationAmountKrw === null
+																									? "환율 미연동"
+																									: formatKrw(
+																											evaluationAmountKrw,
+																										)}
+																							</p>
+																						) : (
+																							<p className="text-xs text-slate-500">
+																								현재가:{" "}
+																								{currentPrice === null
+																									? "미연동"
+																									: formatKrw(
+																											currentPrice,
+																										)}{" "}
+																								/ 평가금액:{" "}
+																								{evaluationAmountLocal === null
+																									? "-"
+																									: formatKrw(
+																											evaluationAmountLocal,
+																										)}
+																							</p>
+																						)}
+																						<p
+																							className={`text-xs ${
+																								profitAmountLocal !== null &&
+																								profitAmountLocal >= 0
+																									? "text-emerald-600"
+																									: "text-rose-600"
+																							}`}
+																						>
+																							수익:{" "}
+																							{profitAmountLocal === null
+																								? "-"
+																								: isUsHolding
+																									? formatUsd(profitAmountLocal)
+																									: formatKrw(
+																											profitAmountLocal,
+																										)}
+																							{profitRate === null
+																								? ""
+																								: ` (${profitRate.toFixed(2)}%)`}
+																							{isUsHolding
+																								? ` / ${
+																										profitAmountKrw === null
+																											? "환율 미연동"
+																											: formatKrw(
+																													profitAmountKrw,
+																												)
+																									}`
+																								: ""}
+																						</p>
+																					</div>
+																					<div className="flex gap-2">
+																						<Button
+																							type="button"
+																							onClick={() =>
+																								handleUpdateHolding(item)
+																							}
+																						>
+																							수정 저장
+																						</Button>
+																						<Button
+																							type="button"
+																							variant="outline"
+																							onClick={() =>
+																								handleDeleteHolding(item.id)
+																							}
+																						>
+																							삭제
+																						</Button>
+																					</div>
+																				</div>
+																				<div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-6">
+																					<InlineNumberInput
+																						label="수량"
+																						value={draft.quantity}
+																						step={0.0001}
+																						onChange={(value) =>
 																							setHoldingDrafts((prev) => ({
 																								...prev,
 																								[item.id]: {
 																									...draft,
-																									isAccumulating:
-																										event.target.checked,
+																									quantity: value,
 																								},
 																							}))
 																						}
 																					/>
-																					모으기 종목
-																				</label>
+																					<InlineNumberInput
+																						label={
+																							item.market === "US"
+																								? "평단가(USD)"
+																								: "평단가(원)"
+																						}
+																						value={draft.averagePrice}
+																						step={0.01}
+																						onChange={(value) =>
+																							setHoldingDrafts((prev) => ({
+																								...prev,
+																								[item.id]: {
+																									...draft,
+																									averagePrice: value,
+																								},
+																							}))
+																						}
+																					/>
+																					<div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+																						<label className="flex items-center gap-2 text-xs font-medium">
+																							<input
+																								type="checkbox"
+																								checked={draft.isAccumulating}
+																								onChange={(event) =>
+																									setHoldingDrafts((prev) => ({
+																										...prev,
+																										[item.id]: {
+																											...draft,
+																											isAccumulating:
+																												event.target.checked,
+																										},
+																									}))
+																								}
+																							/>
+																							모으기 종목
+																						</label>
+																					</div>
+																					{draft.isAccumulating ? (
+																						<>
+																							<div>
+																								<label className="mb-1 block text-xs font-medium">
+																									주기
+																								</label>
+																								<select
+																									value={draft.cadence}
+																									onChange={(event) =>
+																										setHoldingDrafts(
+																											(prev) => ({
+																												...prev,
+																												[item.id]: {
+																													...draft,
+																													cadence: event.target
+																														.value as Cadence,
+																													runDay: 1,
+																												},
+																											}),
+																										)
+																									}
+																									className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+																								>
+																									{CADENCES.map((cadence) => (
+																										<option
+																											key={cadence}
+																											value={cadence}
+																										>
+																											{cadence === "WEEKLY"
+																												? "매주"
+																												: "매달"}
+																										</option>
+																									))}
+																								</select>
+																							</div>
+																							<InlineNumberInput
+																								label={
+																									draft.cadence === "WEEKLY"
+																										? "요일(1=월..7=일)"
+																										: "매달 n일"
+																								}
+																								value={draft.runDay}
+																								step={1}
+																								onChange={(value) =>
+																									setHoldingDrafts((prev) => ({
+																										...prev,
+																										[item.id]: {
+																											...draft,
+																											runDay: Math.max(
+																												1,
+																												Math.round(value),
+																											),
+																										},
+																									}))
+																								}
+																							/>
+																							<div>
+																								<label className="mb-1 block text-xs font-medium">
+																									모으기 기준
+																								</label>
+																								<select
+																									value={draft.accumulationType}
+																									onChange={(event) =>
+																										setHoldingDrafts(
+																											(prev) => ({
+																												...prev,
+																												[item.id]: {
+																													...draft,
+																													accumulationType:
+																														event.target
+																															.value as AccumulationType,
+																												},
+																											}),
+																										)
+																									}
+																									className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+																								>
+																									<option value="AMOUNT">
+																										회차 금액
+																									</option>
+																									<option value="SHARES">
+																										회차 수량
+																									</option>
+																								</select>
+																							</div>
+																							{draft.accumulationType ===
+																								"AMOUNT" &&
+																							item.market === "US" ? (
+																								<div>
+																									<label className="mb-1 block text-xs font-medium">
+																										금액 통화
+																									</label>
+																									<select
+																										value={
+																											draft.accumulationCurrency
+																										}
+																										onChange={(event) =>
+																											setHoldingDrafts(
+																												(prev) => ({
+																													...prev,
+																													[item.id]: {
+																														...draft,
+																														accumulationCurrency:
+																															event.target
+																																.value as AccumulationCurrency,
+																													},
+																												}),
+																											)
+																										}
+																										className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+																									>
+																										<option value="USD">
+																											USD
+																										</option>
+																										<option value="KRW">
+																											원화(KRW)
+																										</option>
+																									</select>
+																								</div>
+																							) : null}
+																							<InlineNumberInput
+																								label={
+																									draft.accumulationType ===
+																									"AMOUNT"
+																										? item.market === "US"
+																											? `회차 금액(${draft.accumulationCurrency})`
+																											: "회차 금액(원)"
+																										: "회차 수량(주)"
+																								}
+																								value={draft.accumulationValue}
+																								step={0.0001}
+																								onChange={(value) =>
+																									setHoldingDrafts((prev) => ({
+																										...prev,
+																										[item.id]: {
+																											...draft,
+																											accumulationValue: value,
+																										},
+																									}))
+																								}
+																							/>
+																						</>
+																					) : null}
+																				</div>
 																			</div>
-																			{draft.isAccumulating ? (
-																				<>
+																		);
+																	})}
+																</div>
+															</div>
+														))}
+													</div>
+												</div>
+											</section>
+										) : null}
+										<LayerModal
+											open={isDepositModalOpen}
+											title="증권 계좌 예치금 입력"
+											onClose={() => setIsDepositModalOpen(false)}
+										>
+											<p className="text-sm text-slate-600">
+												토스/삼성 계좌의 현금 예치금을 통화와 함께 입력합니다.
+											</p>
+											<div className="mt-4 grid gap-3 md:grid-cols-2">
+												<div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+													<p className="text-xs font-medium text-slate-700">
+														토스증권
+													</p>
+													<div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] gap-2">
+														<select
+															value={overview.tossDepositCurrency}
+															onChange={(event) =>
+																setOverview((prev) => ({
+																	...prev,
+																	tossDepositCurrency: event.target.value as
+																		| "KRW"
+																		| "USD",
+																}))
+															}
+															className="rounded-md border border-slate-300 px-2 py-2 text-sm"
+														>
+															<option value="KRW">원화</option>
+															<option value="USD">USD</option>
+														</select>
+														<CurrencyInput
+															value={overview.tossDepositAmount}
+															onChange={(value) =>
+																setOverview((prev) => ({
+																	...prev,
+																	tossDepositAmount: value,
+																}))
+															}
+														/>
+													</div>
+													<p className="mt-2 text-xs text-slate-500">
+														{overview.tossDepositCurrency === "USD"
+															? formatUsd(overview.tossDepositAmount)
+															: formatKrw(overview.tossDepositAmount)}
+													</p>
+												</div>
+												<div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+													<p className="text-xs font-medium text-slate-700">
+														삼성증권
+													</p>
+													<div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] gap-2">
+														<select
+															value={overview.samsungDepositCurrency}
+															onChange={(event) =>
+																setOverview((prev) => ({
+																	...prev,
+																	samsungDepositCurrency: event.target.value as
+																		| "KRW"
+																		| "USD",
+																}))
+															}
+															className="rounded-md border border-slate-300 px-2 py-2 text-sm"
+														>
+															<option value="KRW">원화</option>
+															<option value="USD">USD</option>
+														</select>
+														<CurrencyInput
+															value={overview.samsungDepositAmount}
+															onChange={(value) =>
+																setOverview((prev) => ({
+																	...prev,
+																	samsungDepositAmount: value,
+																}))
+															}
+														/>
+													</div>
+													<p className="mt-2 text-xs text-slate-500">
+														{overview.samsungDepositCurrency === "USD"
+															? formatUsd(overview.samsungDepositAmount)
+															: formatKrw(overview.samsungDepositAmount)}
+													</p>
+												</div>
+											</div>
+											<div className="mt-4 flex justify-end gap-2">
+												<Button
+													type="button"
+													variant="outline"
+													onClick={() => setIsDepositModalOpen(false)}
+												>
+													닫기
+												</Button>
+												<Button
+													type="button"
+													onClick={() => void handleSaveDepositModal()}
+													disabled={savingOverviewState}
+												>
+													{savingOverviewState ? "저장 중..." : "저장"}
+												</Button>
+											</div>
+										</LayerModal>
+										<LayerModal
+											open={isHoldingFormModalOpen}
+											title="보유 종목 추가"
+											onClose={() => setIsHoldingFormModalOpen(false)}
+										>
+											<div className="grid grid-cols-2 gap-3">
+												<div>
+													<label className="mb-1 block text-xs font-medium">
+														증권사
+													</label>
+													<select
+														value={holdingForm.broker}
+														onChange={(event) =>
+															setHoldingForm((prev) => ({
+																...prev,
+																broker: event.target
+																	.value as (typeof BROKERS)[number],
+															}))
+														}
+														className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+													>
+														{BROKERS.map((broker) => (
+															<option value={broker} key={broker}>
+																{broker === "TOSS" ? "토스증권" : "삼성증권"}
+															</option>
+														))}
+													</select>
+												</div>
+												<div>
+													<label className="mb-1 block text-xs font-medium">
+														시장
+													</label>
+													<select
+														value={holdingForm.market}
+														onChange={(event) => {
+															const nextMarket = event.target.value as
+																| "KR"
+																| "US";
+															setStockSymbolResults([]);
+															setHoldingForm((prev) => ({
+																...prev,
+																market: nextMarket,
+																accumulationCurrency:
+																	nextMarket === "US"
+																		? prev.accumulationCurrency
+																		: "KRW",
+															}));
+														}}
+														className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+													>
+														<option value="KR">한국</option>
+														<option value="US">미국</option>
+													</select>
+												</div>
+												<div className="col-span-2">
+													<label className="mb-1 block text-xs font-medium">
+														종목 검색
+													</label>
+													<div className="flex gap-2">
+														<input
+															className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+															value={stockSearchQuery}
+															onChange={(event) =>
+																setStockSearchQuery(event.target.value)
+															}
+															onKeyDown={(event) => {
+																if (event.key === "Enter") {
+																	void handleSearchSymbols();
+																}
+															}}
+															placeholder={
+																holdingForm.market === "KR"
+																	? "삼성전자, 005930"
+																	: "AAPL, TSLA, NVDA"
+															}
+														/>
+														<Button
+															type="button"
+															variant="outline"
+															onClick={handleSearchSymbols}
+															disabled={searchingStockSymbol}
+														>
+															{searchingStockSymbol ? "검색 중" : "검색"}
+														</Button>
+													</div>
+													<div className="mt-2 max-h-40 space-y-2 overflow-y-auto rounded-md border border-slate-200 p-2">
+														{stockSymbolResults.length === 0 ? (
+															<p className="text-xs text-slate-500">
+																종목명 또는 티커를 검색하고 결과를 선택하세요.
+															</p>
+														) : (
+															stockSymbolResults.map((item) => (
+																<button
+																	type="button"
+																	key={`${item.quoteSymbol}-${item.name}`}
+																	onClick={() => applySymbol(item)}
+																	className="w-full rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+																>
+																	<p className="font-medium">{item.name}</p>
+																	<p className="text-xs text-slate-500">
+																		{item.symbol} ({item.market}) /{" "}
+																		{item.exchange}
+																	</p>
+																</button>
+															))
+														)}
+													</div>
+													<p className="mt-2 text-xs text-slate-500">
+														선택된 종목:{" "}
+														{holdingForm.symbol.trim().length > 0
+															? `${holdingForm.name} (${holdingForm.symbol})`
+															: "없음"}
+													</p>
+												</div>
+												<div>
+													<label className="mb-1 block text-xs font-medium">
+														보유 수량
+													</label>
+													<input
+														type="number"
+														min="0"
+														step="0.0001"
+														value={holdingForm.quantity}
+														onChange={(event) =>
+															setHoldingForm((prev) => ({
+																...prev,
+																quantity: Number.parseFloat(
+																	event.target.value || "0",
+																),
+															}))
+														}
+														className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+													/>
+												</div>
+												<div>
+													<label className="mb-1 block text-xs font-medium">
+														평단가 ({holdingForm.market === "US" ? "USD" : "원"}
+														)
+													</label>
+													<input
+														type="number"
+														min="0"
+														step="0.01"
+														value={holdingForm.averagePrice}
+														onChange={(event) =>
+															setHoldingForm((prev) => ({
+																...prev,
+																averagePrice: Number.parseFloat(
+																	event.target.value || "0",
+																),
+															}))
+														}
+														className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+													/>
+												</div>
+												<div className="col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+													<label className="flex items-center gap-2 text-xs font-medium">
+														<input
+															type="checkbox"
+															checked={holdingForm.isAccumulating}
+															onChange={(event) =>
+																setHoldingForm((prev) => ({
+																	...prev,
+																	isAccumulating: event.target.checked,
+																}))
+															}
+														/>
+														모으기 종목으로 관리
+													</label>
+												</div>
+												{holdingForm.isAccumulating ? (
+													<>
+														<div>
+															<label className="mb-1 block text-xs font-medium">
+																주기
+															</label>
+															<select
+																value={holdingForm.cadence}
+																onChange={(event) =>
+																	setHoldingForm((prev) => ({
+																		...prev,
+																		cadence: event.target.value as Cadence,
+																		runDay: 1,
+																	}))
+																}
+																className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+															>
+																{CADENCES.map((cadence) => (
+																	<option key={cadence} value={cadence}>
+																		{cadence === "WEEKLY" ? "매주" : "매달"}
+																	</option>
+																))}
+															</select>
+														</div>
+														<div>
+															<label className="mb-1 block text-xs font-medium">
+																실행일 (
+																{holdingForm.cadence === "WEEKLY"
+																	? "1=월 ... 7=일"
+																	: "매달 n일"}
+																)
+															</label>
+															<input
+																type="number"
+																min="1"
+																max={
+																	holdingForm.cadence === "WEEKLY" ? "7" : "31"
+																}
+																step="1"
+																value={holdingForm.runDay}
+																onChange={(event) =>
+																	setHoldingForm((prev) => ({
+																		...prev,
+																		runDay: Number.parseInt(
+																			event.target.value || "1",
+																			10,
+																		),
+																	}))
+																}
+																className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+															/>
+														</div>
+														<div>
+															<label className="mb-1 block text-xs font-medium">
+																모으기 기준
+															</label>
+															<select
+																value={holdingForm.accumulationType}
+																onChange={(event) =>
+																	setHoldingForm((prev) => ({
+																		...prev,
+																		accumulationType: event.target
+																			.value as AccumulationType,
+																	}))
+																}
+																className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+															>
+																<option value="AMOUNT">회차 금액</option>
+																<option value="SHARES">회차 수량</option>
+															</select>
+														</div>
+														{holdingForm.accumulationType === "AMOUNT" &&
+														holdingForm.market === "US" ? (
+															<div>
+																<label className="mb-1 block text-xs font-medium">
+																	금액 통화
+																</label>
+																<select
+																	value={holdingForm.accumulationCurrency}
+																	onChange={(event) =>
+																		setHoldingForm((prev) => ({
+																			...prev,
+																			accumulationCurrency: event.target
+																				.value as AccumulationCurrency,
+																		}))
+																	}
+																	className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+																>
+																	<option value="USD">USD</option>
+																	<option value="KRW">원화(KRW)</option>
+																</select>
+															</div>
+														) : null}
+														<div>
+															<label className="mb-1 block text-xs font-medium">
+																모으기 값 (
+																{holdingForm.accumulationType === "AMOUNT"
+																	? holdingForm.market === "US"
+																		? holdingForm.accumulationCurrency
+																		: "원"
+																	: "주"}
+																)
+															</label>
+															<input
+																type="number"
+																min="0"
+																step="0.0001"
+																value={holdingForm.accumulationValue}
+																onChange={(event) =>
+																	setHoldingForm((prev) => ({
+																		...prev,
+																		accumulationValue: Number.parseFloat(
+																			event.target.value || "0",
+																		),
+																	}))
+																}
+																className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+															/>
+														</div>
+													</>
+												) : null}
+											</div>
+											<div className="mt-4 flex justify-end gap-2">
+												<Button
+													type="button"
+													variant="outline"
+													onClick={() => setIsHoldingFormModalOpen(false)}
+												>
+													닫기
+												</Button>
+												<Button
+													type="button"
+													onClick={handleAddHolding}
+													disabled={submittingHolding}
+												>
+													{submittingHolding ? "저장 중..." : "보유 종목 저장"}
+												</Button>
+											</div>
+										</LayerModal>
+
+										{activeDashboardSection === "INSTALLMENT" ? (
+											<section
+												id="savings-installment-section"
+												className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+											>
+												<h2 className="text-xl font-semibold">적금</h2>
+												<SectionYearMonthImportControl
+													onOpen={() =>
+														setSectionImportModalTarget("INSTALLMENT")
+													}
+													disabled={copyingSectionTarget !== null}
+													loading={copyingSectionTarget === "INSTALLMENT"}
+												/>
+												<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5">
+													<div className="space-y-3">
+														{installments.length === 0 ? (
+															<div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+																등록된 적금이 없습니다.
+															</div>
+														) : null}
+														{installments.map((item) => {
+															const draft = installmentDrafts[item.id];
+															if (draft === undefined) {
+																return null;
+															}
+															const progress = calcDateProgress(
+																draft.startDate,
+																draft.maturityDate,
+															);
+															const recurringText =
+																item.isRecurring &&
+																item.cadence !== null &&
+																item.runDay !== null
+																	? `${item.cadence === "WEEKLY" ? "매주" : "매달"} ${
+																			item.cadence === "WEEKLY"
+																				? getWeekdayLabel(item.runDay)
+																				: `${item.runDay}일`
+																		} / ${
+																			item.applyMode === "TODAY"
+																				? "오늘부터"
+																				: "다음 회차부터"
+																		}`
+																	: "비정기";
+
+															return (
+																<div
+																	key={item.id}
+																	className="rounded-xl border border-slate-200 bg-white p-4"
+																>
+																	<div className="flex flex-wrap items-center justify-between gap-2">
+																		<div>
+																			<p className="font-medium">{item.name}</p>
+																			<p className="text-xs text-slate-500">
+																				누적 납입액:{" "}
+																				{formatKrw(item.savedAmount)} /
+																				정기납입: {recurringText}
+																			</p>
+																			<p className="text-xs text-slate-500">
+																				만기 혜택:{" "}
+																				{item.benefitType === "INTEREST_RATE"
+																					? `이율 ${item.benefitValue}%`
+																					: `만기금액 ${formatKrw(item.benefitValue)}`}
+																			</p>
+																			<p className="text-xs text-slate-500">
+																				만기일:{" "}
+																				{item.maturityDate === null
+																					? "미설정"
+																					: item.maturityDate}
+																			</p>
+																		</div>
+																		<div className="flex gap-2">
+																			<Button
+																				type="button"
+																				onClick={() =>
+																					handleUpdateInstallment(item.id)
+																				}
+																			>
+																				수정 저장
+																			</Button>
+																			<Button
+																				type="button"
+																				variant="outline"
+																				onClick={() =>
+																					handleDeleteInstallment(item.id)
+																				}
+																			>
+																				삭제
+																			</Button>
+																		</div>
+																	</div>
+																	<div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-8">
+																		<div className="md:col-span-2">
+																			<label className="mb-1 block text-xs font-medium">
+																				적금명
+																			</label>
+																			<input
+																				value={draft.name}
+																				onChange={(event) =>
+																					setInstallmentDrafts((prev) => ({
+																						...prev,
+																						[item.id]: {
+																							...draft,
+																							name: event.target.value,
+																						},
+																					}))
+																				}
+																				className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+																			/>
+																		</div>
+																		<div>
+																			<label className="mb-1 block text-xs font-medium">
+																				누적 납입액(원)
+																			</label>
+																			<CurrencyInput
+																				value={draft.savedAmount}
+																				onChange={(value) =>
+																					setInstallmentDrafts((prev) => ({
+																						...prev,
+																						[item.id]: {
+																							...draft,
+																							savedAmount: value,
+																						},
+																					}))
+																				}
+																			/>
+																		</div>
+																		<div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+																			<label className="flex items-center gap-2 text-xs font-medium">
+																				<input
+																					type="checkbox"
+																					checked={draft.isRecurring}
+																					onChange={(event) =>
+																						setInstallmentDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								isRecurring:
+																									event.target.checked,
+																							},
+																						}))
+																					}
+																				/>
+																				정기 납입 규칙 사용
+																			</label>
+																		</div>
+																		{draft.isRecurring ? (
+																			<div className="md:col-span-8 rounded-md border border-slate-200 bg-slate-50 p-3">
+																				<p className="mb-2 text-xs font-semibold text-slate-700">
+																					정기 납입 규칙
+																				</p>
+																				<div className="grid gap-3 md:grid-cols-4">
 																					<div>
 																						<label className="mb-1 block text-xs font-medium">
 																							주기
@@ -2582,15 +3353,17 @@ function App() {
 																						<select
 																							value={draft.cadence}
 																							onChange={(event) =>
-																								setHoldingDrafts((prev) => ({
-																									...prev,
-																									[item.id]: {
-																										...draft,
-																										cadence: event.target
-																											.value as Cadence,
-																										runDay: 1,
-																									},
-																								}))
+																								setInstallmentDrafts(
+																									(prev) => ({
+																										...prev,
+																										[item.id]: {
+																											...draft,
+																											cadence: event.target
+																												.value as Cadence,
+																											runDay: 1,
+																										},
+																									}),
+																								)
 																							}
 																							className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
 																						>
@@ -2606,1711 +3379,1058 @@ function App() {
 																							))}
 																						</select>
 																					</div>
-																					<InlineNumberInput
-																						label={
-																							draft.cadence === "WEEKLY"
-																								? "요일(1=월..7=일)"
-																								: "매달 n일"
-																						}
-																						value={draft.runDay}
-																						step={1}
-																						onChange={(value) =>
-																							setHoldingDrafts((prev) => ({
-																								...prev,
-																								[item.id]: {
-																									...draft,
-																									runDay: Math.max(
-																										1,
-																										Math.round(value),
-																									),
-																								},
-																							}))
-																						}
-																					/>
 																					<div>
 																						<label className="mb-1 block text-xs font-medium">
-																							모으기 기준
+																							실행일
 																						</label>
-																						<select
-																							value={draft.accumulationType}
-																							onChange={(event) =>
-																								setHoldingDrafts((prev) => ({
-																									...prev,
-																									[item.id]: {
-																										...draft,
-																										accumulationType: event
-																											.target
-																											.value as AccumulationType,
-																									},
-																								}))
+																						<input
+																							type="number"
+																							min="1"
+																							max={
+																								draft.cadence === "WEEKLY"
+																									? "7"
+																									: "31"
 																							}
-																							className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																						>
-																							<option value="AMOUNT">
-																								회차 금액
-																							</option>
-																							<option value="SHARES">
-																								회차 수량
-																							</option>
-																						</select>
-																					</div>
-																					{draft.accumulationType ===
-																						"AMOUNT" && item.market === "US" ? (
-																						<div>
-																							<label className="mb-1 block text-xs font-medium">
-																								금액 통화
-																							</label>
-																							<select
-																								value={
-																									draft.accumulationCurrency
-																								}
-																								onChange={(event) =>
-																									setHoldingDrafts((prev) => ({
+																							step="1"
+																							value={draft.runDay}
+																							onChange={(event) =>
+																								setInstallmentDrafts(
+																									(prev) => ({
 																										...prev,
 																										[item.id]: {
 																											...draft,
-																											accumulationCurrency:
-																												event.target
-																													.value as AccumulationCurrency,
+																											runDay: Number.parseInt(
+																												event.target.value ||
+																													"1",
+																												10,
+																											),
 																										},
-																									}))
-																								}
-																								className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																							>
-																								<option value="USD">USD</option>
-																								<option value="KRW">
-																									원화(KRW)
-																								</option>
-																							</select>
-																						</div>
-																					) : null}
-																					<InlineNumberInput
-																						label={
-																							draft.accumulationType ===
-																							"AMOUNT"
-																								? item.market === "US"
-																									? `회차 금액(${draft.accumulationCurrency})`
-																									: "회차 금액(원)"
-																								: "회차 수량(주)"
-																						}
-																						value={draft.accumulationValue}
-																						step={0.0001}
-																						onChange={(value) =>
-																							setHoldingDrafts((prev) => ({
-																								...prev,
-																								[item.id]: {
-																									...draft,
-																									accumulationValue: value,
-																								},
-																							}))
-																						}
-																					/>
-																				</>
-																			) : null}
-																		</div>
-																	</div>
-																);
-															})}
-														</div>
-													</div>
-												))}
-											</div>
-										</div>
-									</section>
-									<LayerModal
-										open={isDepositModalOpen}
-										title="증권 계좌 예치금 입력"
-										onClose={() => setIsDepositModalOpen(false)}
-									>
-										<p className="text-sm text-slate-600">
-											토스/삼성 계좌의 현금 예치금을 통화와 함께 입력합니다.
-										</p>
-										<div className="mt-4 grid gap-3 md:grid-cols-2">
-											<div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-												<p className="text-xs font-medium text-slate-700">
-													토스증권
-												</p>
-												<div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] gap-2">
-													<select
-														value={overview.tossDepositCurrency}
-														onChange={(event) =>
-															setOverview((prev) => ({
-																...prev,
-																tossDepositCurrency: event.target.value as
-																	| "KRW"
-																	| "USD",
-															}))
-														}
-														className="rounded-md border border-slate-300 px-2 py-2 text-sm"
-													>
-														<option value="KRW">원화</option>
-														<option value="USD">USD</option>
-													</select>
-													<CurrencyInput
-														value={overview.tossDepositAmount}
-														onChange={(value) =>
-															setOverview((prev) => ({
-																...prev,
-																tossDepositAmount: value,
-															}))
-														}
-													/>
-												</div>
-												<p className="mt-2 text-xs text-slate-500">
-													{overview.tossDepositCurrency === "USD"
-														? formatUsd(overview.tossDepositAmount)
-														: formatKrw(overview.tossDepositAmount)}
-												</p>
-											</div>
-											<div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-												<p className="text-xs font-medium text-slate-700">
-													삼성증권
-												</p>
-												<div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] gap-2">
-													<select
-														value={overview.samsungDepositCurrency}
-														onChange={(event) =>
-															setOverview((prev) => ({
-																...prev,
-																samsungDepositCurrency: event.target.value as
-																	| "KRW"
-																	| "USD",
-															}))
-														}
-														className="rounded-md border border-slate-300 px-2 py-2 text-sm"
-													>
-														<option value="KRW">원화</option>
-														<option value="USD">USD</option>
-													</select>
-													<CurrencyInput
-														value={overview.samsungDepositAmount}
-														onChange={(value) =>
-															setOverview((prev) => ({
-																...prev,
-																samsungDepositAmount: value,
-															}))
-														}
-													/>
-												</div>
-												<p className="mt-2 text-xs text-slate-500">
-													{overview.samsungDepositCurrency === "USD"
-														? formatUsd(overview.samsungDepositAmount)
-														: formatKrw(overview.samsungDepositAmount)}
-												</p>
-											</div>
-										</div>
-										<div className="mt-4 flex justify-end gap-2">
-											<Button
-												type="button"
-												variant="outline"
-												onClick={() => setIsDepositModalOpen(false)}
-											>
-												닫기
-											</Button>
-											<Button
-												type="button"
-												onClick={() => void handleSaveDepositModal()}
-												disabled={savingOverviewState}
-											>
-												{savingOverviewState ? "저장 중..." : "저장"}
-											</Button>
-										</div>
-									</LayerModal>
-									<LayerModal
-										open={isHoldingFormModalOpen}
-										title="보유 종목 추가"
-										onClose={() => setIsHoldingFormModalOpen(false)}
-									>
-										<div className="grid grid-cols-2 gap-3">
-											<div>
-												<label className="mb-1 block text-xs font-medium">
-													증권사
-												</label>
-												<select
-													value={holdingForm.broker}
-													onChange={(event) =>
-														setHoldingForm((prev) => ({
-															...prev,
-															broker: event.target
-																.value as (typeof BROKERS)[number],
-														}))
-													}
-													className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-												>
-													{BROKERS.map((broker) => (
-														<option value={broker} key={broker}>
-															{broker === "TOSS" ? "토스증권" : "삼성증권"}
-														</option>
-													))}
-												</select>
-											</div>
-											<div>
-												<label className="mb-1 block text-xs font-medium">
-													시장
-												</label>
-												<select
-													value={holdingForm.market}
-													onChange={(event) => {
-														const nextMarket = event.target.value as
-															| "KR"
-															| "US";
-														setStockSymbolResults([]);
-														setHoldingForm((prev) => ({
-															...prev,
-															market: nextMarket,
-															accumulationCurrency:
-																nextMarket === "US"
-																	? prev.accumulationCurrency
-																	: "KRW",
-														}));
-													}}
-													className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-												>
-													<option value="KR">한국</option>
-													<option value="US">미국</option>
-												</select>
-											</div>
-											<div className="col-span-2">
-												<label className="mb-1 block text-xs font-medium">
-													종목 검색
-												</label>
-												<div className="flex gap-2">
-													<input
-														className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-														value={stockSearchQuery}
-														onChange={(event) =>
-															setStockSearchQuery(event.target.value)
-														}
-														onKeyDown={(event) => {
-															if (event.key === "Enter") {
-																void handleSearchSymbols();
-															}
-														}}
-														placeholder={
-															holdingForm.market === "KR"
-																? "삼성전자, 005930"
-																: "AAPL, TSLA, NVDA"
-														}
-													/>
-													<Button
-														type="button"
-														variant="outline"
-														onClick={handleSearchSymbols}
-														disabled={searchingStockSymbol}
-													>
-														{searchingStockSymbol ? "검색 중" : "검색"}
-													</Button>
-												</div>
-												<div className="mt-2 max-h-40 space-y-2 overflow-y-auto rounded-md border border-slate-200 p-2">
-													{stockSymbolResults.length === 0 ? (
-														<p className="text-xs text-slate-500">
-															종목명 또는 티커를 검색하고 결과를 선택하세요.
-														</p>
-													) : (
-														stockSymbolResults.map((item) => (
-															<button
-																type="button"
-																key={`${item.quoteSymbol}-${item.name}`}
-																onClick={() => applySymbol(item)}
-																className="w-full rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
-															>
-																<p className="font-medium">{item.name}</p>
-																<p className="text-xs text-slate-500">
-																	{item.symbol} ({item.market}) /{" "}
-																	{item.exchange}
-																</p>
-															</button>
-														))
-													)}
-												</div>
-												<p className="mt-2 text-xs text-slate-500">
-													선택된 종목:{" "}
-													{holdingForm.symbol.trim().length > 0
-														? `${holdingForm.name} (${holdingForm.symbol})`
-														: "없음"}
-												</p>
-											</div>
-											<div>
-												<label className="mb-1 block text-xs font-medium">
-													보유 수량
-												</label>
-												<input
-													type="number"
-													min="0"
-													step="0.0001"
-													value={holdingForm.quantity}
-													onChange={(event) =>
-														setHoldingForm((prev) => ({
-															...prev,
-															quantity: Number.parseFloat(
-																event.target.value || "0",
-															),
-														}))
-													}
-													className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-												/>
-											</div>
-											<div>
-												<label className="mb-1 block text-xs font-medium">
-													평단가 ({holdingForm.market === "US" ? "USD" : "원"})
-												</label>
-												<input
-													type="number"
-													min="0"
-													step="0.01"
-													value={holdingForm.averagePrice}
-													onChange={(event) =>
-														setHoldingForm((prev) => ({
-															...prev,
-															averagePrice: Number.parseFloat(
-																event.target.value || "0",
-															),
-														}))
-													}
-													className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-												/>
-											</div>
-											<div className="col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-												<label className="flex items-center gap-2 text-xs font-medium">
-													<input
-														type="checkbox"
-														checked={holdingForm.isAccumulating}
-														onChange={(event) =>
-															setHoldingForm((prev) => ({
-																...prev,
-																isAccumulating: event.target.checked,
-															}))
-														}
-													/>
-													모으기 종목으로 관리
-												</label>
-											</div>
-											{holdingForm.isAccumulating ? (
-												<>
-													<div>
-														<label className="mb-1 block text-xs font-medium">
-															주기
-														</label>
-														<select
-															value={holdingForm.cadence}
-															onChange={(event) =>
-																setHoldingForm((prev) => ({
-																	...prev,
-																	cadence: event.target.value as Cadence,
-																	runDay: 1,
-																}))
-															}
-															className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-														>
-															{CADENCES.map((cadence) => (
-																<option key={cadence} value={cadence}>
-																	{cadence === "WEEKLY" ? "매주" : "매달"}
-																</option>
-															))}
-														</select>
-													</div>
-													<div>
-														<label className="mb-1 block text-xs font-medium">
-															실행일 (
-															{holdingForm.cadence === "WEEKLY"
-																? "1=월 ... 7=일"
-																: "매달 n일"}
-															)
-														</label>
-														<input
-															type="number"
-															min="1"
-															max={
-																holdingForm.cadence === "WEEKLY" ? "7" : "31"
-															}
-															step="1"
-															value={holdingForm.runDay}
-															onChange={(event) =>
-																setHoldingForm((prev) => ({
-																	...prev,
-																	runDay: Number.parseInt(
-																		event.target.value || "1",
-																		10,
-																	),
-																}))
-															}
-															className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-														/>
-													</div>
-													<div>
-														<label className="mb-1 block text-xs font-medium">
-															모으기 기준
-														</label>
-														<select
-															value={holdingForm.accumulationType}
-															onChange={(event) =>
-																setHoldingForm((prev) => ({
-																	...prev,
-																	accumulationType: event.target
-																		.value as AccumulationType,
-																}))
-															}
-															className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-														>
-															<option value="AMOUNT">회차 금액</option>
-															<option value="SHARES">회차 수량</option>
-														</select>
-													</div>
-													{holdingForm.accumulationType === "AMOUNT" &&
-													holdingForm.market === "US" ? (
-														<div>
-															<label className="mb-1 block text-xs font-medium">
-																금액 통화
-															</label>
-															<select
-																value={holdingForm.accumulationCurrency}
-																onChange={(event) =>
-																	setHoldingForm((prev) => ({
-																		...prev,
-																		accumulationCurrency: event.target
-																			.value as AccumulationCurrency,
-																	}))
-																}
-																className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-															>
-																<option value="USD">USD</option>
-																<option value="KRW">원화(KRW)</option>
-															</select>
-														</div>
-													) : null}
-													<div>
-														<label className="mb-1 block text-xs font-medium">
-															모으기 값 (
-															{holdingForm.accumulationType === "AMOUNT"
-																? holdingForm.market === "US"
-																	? holdingForm.accumulationCurrency
-																	: "원"
-																: "주"}
-															)
-														</label>
-														<input
-															type="number"
-															min="0"
-															step="0.0001"
-															value={holdingForm.accumulationValue}
-															onChange={(event) =>
-																setHoldingForm((prev) => ({
-																	...prev,
-																	accumulationValue: Number.parseFloat(
-																		event.target.value || "0",
-																	),
-																}))
-															}
-															className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-														/>
-													</div>
-												</>
-											) : null}
-										</div>
-										<div className="mt-4 flex justify-end gap-2">
-											<Button
-												type="button"
-												variant="outline"
-												onClick={() => setIsHoldingFormModalOpen(false)}
-											>
-												닫기
-											</Button>
-											<Button
-												type="button"
-												onClick={handleAddHolding}
-												disabled={submittingHolding}
-											>
-												{submittingHolding ? "저장 중..." : "보유 종목 저장"}
-											</Button>
-										</div>
-									</LayerModal>
-
-									<section
-										id="savings-installment-section"
-										className="self-start rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-12 lg:col-start-1 lg:row-start-2 lg:h-full lg:overflow-y-auto lg:pr-3"
-									>
-										<h2 className="text-xl font-semibold">적금</h2>
-										<SectionYearMonthImportControl
-											onOpen={() => setSectionImportModalTarget("INSTALLMENT")}
-											disabled={copyingSectionTarget !== null}
-											loading={copyingSectionTarget === "INSTALLMENT"}
-										/>
-										<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5">
-											<div className="space-y-3">
-												{installments.length === 0 ? (
-													<div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-														등록된 적금이 없습니다.
-													</div>
-												) : null}
-												{installments.map((item) => {
-													const draft = installmentDrafts[item.id];
-													if (draft === undefined) {
-														return null;
-													}
-													const progress = calcDateProgress(
-														draft.startDate,
-														draft.maturityDate,
-													);
-													const recurringText =
-														item.isRecurring &&
-														item.cadence !== null &&
-														item.runDay !== null
-															? `${item.cadence === "WEEKLY" ? "매주" : "매달"} ${
-																	item.cadence === "WEEKLY"
-																		? getWeekdayLabel(item.runDay)
-																		: `${item.runDay}일`
-																} / ${
-																	item.applyMode === "TODAY"
-																		? "오늘부터"
-																		: "다음 회차부터"
-																}`
-															: "비정기";
-
-													return (
-														<div
-															key={item.id}
-															className="rounded-xl border border-slate-200 bg-white p-4"
-														>
-															<div className="flex flex-wrap items-center justify-between gap-2">
-																<div>
-																	<p className="font-medium">{item.name}</p>
-																	<p className="text-xs text-slate-500">
-																		누적 납입액: {formatKrw(item.savedAmount)} /
-																		정기납입: {recurringText}
-																	</p>
-																	<p className="text-xs text-slate-500">
-																		만기 혜택:{" "}
-																		{item.benefitType === "INTEREST_RATE"
-																			? `이율 ${item.benefitValue}%`
-																			: `만기금액 ${formatKrw(item.benefitValue)}`}
-																	</p>
-																	<p className="text-xs text-slate-500">
-																		만기일:{" "}
-																		{item.maturityDate === null
-																			? "미설정"
-																			: item.maturityDate}
-																	</p>
-																</div>
-																<div className="flex gap-2">
-																	<Button
-																		type="button"
-																		onClick={() =>
-																			handleUpdateInstallment(item.id)
-																		}
-																	>
-																		수정 저장
-																	</Button>
-																	<Button
-																		type="button"
-																		variant="outline"
-																		onClick={() =>
-																			handleDeleteInstallment(item.id)
-																		}
-																	>
-																		삭제
-																	</Button>
-																</div>
-															</div>
-															<div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-8">
-																<div className="md:col-span-2">
-																	<label className="mb-1 block text-xs font-medium">
-																		적금명
-																	</label>
-																	<input
-																		value={draft.name}
-																		onChange={(event) =>
-																			setInstallmentDrafts((prev) => ({
-																				...prev,
-																				[item.id]: {
-																					...draft,
-																					name: event.target.value,
-																				},
-																			}))
-																		}
-																		className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-																	/>
-																</div>
-																<div>
-																	<label className="mb-1 block text-xs font-medium">
-																		누적 납입액(원)
-																	</label>
-																	<CurrencyInput
-																		value={draft.savedAmount}
-																		onChange={(value) =>
-																			setInstallmentDrafts((prev) => ({
-																				...prev,
-																				[item.id]: {
-																					...draft,
-																					savedAmount: value,
-																				},
-																			}))
-																		}
-																	/>
-																</div>
-																<div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-																	<label className="flex items-center gap-2 text-xs font-medium">
-																		<input
-																			type="checkbox"
-																			checked={draft.isRecurring}
-																			onChange={(event) =>
-																				setInstallmentDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						isRecurring: event.target.checked,
-																					},
-																				}))
-																			}
-																		/>
-																		정기 납입 규칙 사용
-																	</label>
-																</div>
-																{draft.isRecurring ? (
-																	<div className="md:col-span-8 rounded-md border border-slate-200 bg-slate-50 p-3">
-																		<p className="mb-2 text-xs font-semibold text-slate-700">
-																			정기 납입 규칙
-																		</p>
-																		<div className="grid gap-3 md:grid-cols-4">
-																			<div>
-																				<label className="mb-1 block text-xs font-medium">
-																					주기
-																				</label>
-																				<select
-																					value={draft.cadence}
-																					onChange={(event) =>
-																						setInstallmentDrafts((prev) => ({
-																							...prev,
-																							[item.id]: {
-																								...draft,
-																								cadence: event.target
-																									.value as Cadence,
-																								runDay: 1,
-																							},
-																						}))
-																					}
-																					className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																				>
-																					{CADENCES.map((cadence) => (
-																						<option
-																							key={cadence}
-																							value={cadence}
+																									}),
+																								)
+																							}
+																							className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+																						/>
+																					</div>
+																					<div>
+																						<label className="mb-1 block text-xs font-medium">
+																							적용 시작
+																						</label>
+																						<select
+																							value={draft.applyMode}
+																							onChange={(event) =>
+																								setInstallmentDrafts(
+																									(prev) => ({
+																										...prev,
+																										[item.id]: {
+																											...draft,
+																											applyMode: event.target
+																												.value as InstallmentApplyMode,
+																										},
+																									}),
+																								)
+																							}
+																							className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
 																						>
-																							{cadence === "WEEKLY"
-																								? "매주"
-																								: "매달"}
-																						</option>
-																					))}
-																				</select>
-																			</div>
-																			<div>
-																				<label className="mb-1 block text-xs font-medium">
-																					실행일
-																				</label>
-																				<input
-																					type="number"
-																					min="1"
-																					max={
-																						draft.cadence === "WEEKLY"
-																							? "7"
-																							: "31"
-																					}
-																					step="1"
-																					value={draft.runDay}
-																					onChange={(event) =>
-																						setInstallmentDrafts((prev) => ({
-																							...prev,
-																							[item.id]: {
-																								...draft,
-																								runDay: Number.parseInt(
-																									event.target.value || "1",
-																									10,
+																							{INSTALLMENT_APPLY_MODES.map(
+																								(mode) => (
+																									<option
+																										key={mode}
+																										value={mode}
+																									>
+																										{mode === "TODAY"
+																											? "오늘부터"
+																											: "다음 회차부터"}
+																									</option>
 																								),
-																							},
-																						}))
-																					}
-																					className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-																				/>
+																							)}
+																						</select>
+																					</div>
+																					<div>
+																						<label className="mb-1 block text-xs font-medium">
+																							회차 납입액(원)
+																						</label>
+																						<CurrencyInput
+																							value={draft.monthlyAmount}
+																							onChange={(value) =>
+																								setInstallmentDrafts(
+																									(prev) => ({
+																										...prev,
+																										[item.id]: {
+																											...draft,
+																											monthlyAmount: value,
+																										},
+																									}),
+																								)
+																							}
+																						/>
+																					</div>
+																				</div>
 																			</div>
-																			<div>
-																				<label className="mb-1 block text-xs font-medium">
-																					적용 시작
-																				</label>
-																				<select
-																					value={draft.applyMode}
-																					onChange={(event) =>
-																						setInstallmentDrafts((prev) => ({
-																							...prev,
-																							[item.id]: {
-																								...draft,
-																								applyMode: event.target
-																									.value as InstallmentApplyMode,
-																							},
-																						}))
-																					}
-																					className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																				>
-																					{INSTALLMENT_APPLY_MODES.map(
-																						(mode) => (
-																							<option key={mode} value={mode}>
-																								{mode === "TODAY"
-																									? "오늘부터"
-																									: "다음 회차부터"}
-																							</option>
-																						),
-																					)}
-																				</select>
-																			</div>
-																			<div>
-																				<label className="mb-1 block text-xs font-medium">
-																					회차 납입액(원)
-																				</label>
-																				<CurrencyInput
-																					value={draft.monthlyAmount}
-																					onChange={(value) =>
-																						setInstallmentDrafts((prev) => ({
-																							...prev,
-																							[item.id]: {
-																								...draft,
-																								monthlyAmount: value,
-																							},
-																						}))
-																					}
-																				/>
-																			</div>
-																		</div>
-																	</div>
-																) : null}
-																<div>
-																	<label className="mb-1 block text-xs font-medium">
-																		시작일
-																	</label>
-																	<input
-																		type="date"
-																		value={draft.startDate}
-																		onChange={(event) =>
-																			setInstallmentDrafts((prev) => ({
-																				...prev,
-																				[item.id]: {
-																					...draft,
-																					startDate: event.target.value,
-																				},
-																			}))
-																		}
-																		className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-																	/>
-																</div>
-																<div className="md:col-span-2">
-																	<label className="mb-1 block text-xs font-medium">
-																		만기/혜택
-																	</label>
-																	<div className="grid gap-2 md:grid-cols-2">
-																		<div className="flex gap-2 md:col-span-2">
+																		) : null}
+																		<div>
+																			<label className="mb-1 block text-xs font-medium">
+																				시작일
+																			</label>
 																			<input
 																				type="date"
-																				value={draft.maturityDate ?? ""}
+																				value={draft.startDate}
 																				onChange={(event) =>
 																					setInstallmentDrafts((prev) => ({
 																						...prev,
 																						[item.id]: {
 																							...draft,
-																							maturityDate:
-																								event.target.value.length > 0
-																									? event.target.value
-																									: null,
+																							startDate: event.target.value,
 																						},
 																					}))
 																				}
 																				className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
 																			/>
-																			<Button
-																				type="button"
-																				variant="outline"
-																				size="sm"
-																				className="shrink-0"
-																				onClick={() =>
-																					setInstallmentDrafts((prev) => ({
-																						...prev,
-																						[item.id]: {
-																							...draft,
-																							maturityDate: null,
-																						},
-																					}))
-																				}
-																			>
-																				해제
-																			</Button>
 																		</div>
-																		<select
-																			value={draft.benefitType}
-																			onChange={(event) =>
-																				setInstallmentDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						benefitType: event.target
-																							.value as InstallmentBenefitType,
-																						benefitValue: 0,
-																					},
-																				}))
-																			}
-																			className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																		>
-																			{INSTALLMENT_BENEFIT_TYPES.map((type) => (
-																				<option key={type} value={type}>
-																					{type === "INTEREST_RATE"
-																						? "이율(%)"
-																						: "만기금액(원)"}
-																				</option>
-																			))}
-																		</select>
-																		<input
-																			type="number"
-																			step={
-																				draft.benefitType === "INTEREST_RATE"
-																					? "0.01"
-																					: "1"
-																			}
-																			value={draft.benefitValue}
-																			onChange={(event) =>
-																				setInstallmentDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						benefitValue: Number.parseFloat(
-																							event.target.value || "0",
+																		<div className="md:col-span-2">
+																			<label className="mb-1 block text-xs font-medium">
+																				만기/혜택
+																			</label>
+																			<div className="grid gap-2 md:grid-cols-2">
+																				<div className="flex gap-2 md:col-span-2">
+																					<input
+																						type="date"
+																						value={draft.maturityDate ?? ""}
+																						onChange={(event) =>
+																							setInstallmentDrafts((prev) => ({
+																								...prev,
+																								[item.id]: {
+																									...draft,
+																									maturityDate:
+																										event.target.value.length >
+																										0
+																											? event.target.value
+																											: null,
+																								},
+																							}))
+																						}
+																						className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+																					/>
+																					<Button
+																						type="button"
+																						variant="outline"
+																						size="sm"
+																						className="shrink-0"
+																						onClick={() =>
+																							setInstallmentDrafts((prev) => ({
+																								...prev,
+																								[item.id]: {
+																									...draft,
+																									maturityDate: null,
+																								},
+																							}))
+																						}
+																					>
+																						해제
+																					</Button>
+																				</div>
+																				<select
+																					value={draft.benefitType}
+																					onChange={(event) =>
+																						setInstallmentDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								benefitType: event.target
+																									.value as InstallmentBenefitType,
+																								benefitValue: 0,
+																							},
+																						}))
+																					}
+																					className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+																				>
+																					{INSTALLMENT_BENEFIT_TYPES.map(
+																						(type) => (
+																							<option key={type} value={type}>
+																								{type === "INTEREST_RATE"
+																									? "이율(%)"
+																									: "만기금액(원)"}
+																							</option>
 																						),
-																					},
-																				}))
-																			}
-																			className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-																			placeholder={
-																				draft.benefitType === "INTEREST_RATE"
-																					? "이율"
-																					: "만기금액"
-																			}
-																		/>
+																					)}
+																				</select>
+																				<input
+																					type="number"
+																					step={
+																						draft.benefitType ===
+																						"INTEREST_RATE"
+																							? "0.01"
+																							: "1"
+																					}
+																					value={draft.benefitValue}
+																					onChange={(event) =>
+																						setInstallmentDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								benefitValue: Number.parseFloat(
+																									event.target.value || "0",
+																								),
+																							},
+																						}))
+																					}
+																					className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+																					placeholder={
+																						draft.benefitType ===
+																						"INTEREST_RATE"
+																							? "이율"
+																							: "만기금액"
+																					}
+																				/>
+																			</div>
+																		</div>
+																	</div>
+																	<div className="mt-3">
+																		{draft.maturityDate === null ? (
+																			<p className="text-xs text-slate-500">
+																				만기일 미설정 (기간 진행률 미표시)
+																			</p>
+																		) : (
+																			<>
+																				<div className="mb-1 flex items-center justify-between text-xs text-slate-600">
+																					<span>기간 진행률</span>
+																					<span>{progress.toFixed(1)}%</span>
+																				</div>
+																				<div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
+																					<div
+																						className="h-full bg-emerald-500 transition-all"
+																						style={{ width: `${progress}%` }}
+																					/>
+																				</div>
+																			</>
+																		)}
 																	</div>
 																</div>
-															</div>
-															<div className="mt-3">
-																{draft.maturityDate === null ? (
-																	<p className="text-xs text-slate-500">
-																		만기일 미설정 (기간 진행률 미표시)
-																	</p>
-																) : (
-																	<>
-																		<div className="mb-1 flex items-center justify-between text-xs text-slate-600">
-																			<span>기간 진행률</span>
-																			<span>{progress.toFixed(1)}%</span>
-																		</div>
-																		<div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
-																			<div
-																				className="h-full bg-emerald-500 transition-all"
-																				style={{ width: `${progress}%` }}
-																			/>
-																		</div>
-																	</>
-																)}
-															</div>
-														</div>
-													);
-												})}
-											</div>
+															);
+														})}
+													</div>
 
-											<div className="mt-5 border-t border-slate-200 pt-4">
-												<h3 className="font-semibold">적금 항목 추가</h3>
-												<div className="mt-3 grid gap-3 md:grid-cols-8">
-													<div className="md:col-span-2">
-														<label className="mb-1 block text-xs font-medium">
-															적금명
-														</label>
-														<input
-															className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-															value={installmentForm.name}
-															onChange={(event) =>
-																setInstallmentForm((prev) => ({
-																	...prev,
-																	name: event.target.value,
-																}))
-															}
-															placeholder="예: 1억 모으기 적금"
-														/>
-													</div>
-													<div>
-														<label className="mb-1 block text-xs font-medium">
-															현재까지 누적 납입액(원)
-														</label>
-														<CurrencyInput
-															value={installmentForm.savedAmount}
-															onChange={(value) =>
-																setInstallmentForm((prev) => ({
-																	...prev,
-																	savedAmount: value,
-																}))
-															}
-														/>
-													</div>
-													<div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-														<label className="flex items-center gap-2 text-xs font-medium">
-															<input
-																type="checkbox"
-																checked={installmentForm.isRecurring}
-																onChange={(event) =>
-																	setInstallmentForm((prev) => ({
-																		...prev,
-																		isRecurring: event.target.checked,
-																	}))
-																}
-															/>
-															정기 납입 규칙 사용
-														</label>
-													</div>
-													{installmentForm.isRecurring ? (
-														<div className="md:col-span-8 rounded-md border border-slate-200 bg-slate-50 p-3">
-															<p className="mb-2 text-xs font-semibold text-slate-700">
-																정기 납입 규칙
-															</p>
-															<div className="grid gap-3 md:grid-cols-4">
-																<div>
-																	<label className="mb-1 block text-xs font-medium">
-																		주기
-																	</label>
-																	<select
-																		value={installmentForm.cadence}
+													<div className="mt-5 border-t border-slate-200 pt-4">
+														<h3 className="font-semibold">적금 항목 추가</h3>
+														<div className="mt-3 grid gap-3 md:grid-cols-8">
+															<div className="md:col-span-2">
+																<label className="mb-1 block text-xs font-medium">
+																	적금명
+																</label>
+																<input
+																	className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+																	value={installmentForm.name}
+																	onChange={(event) =>
+																		setInstallmentForm((prev) => ({
+																			...prev,
+																			name: event.target.value,
+																		}))
+																	}
+																	placeholder="예: 1억 모으기 적금"
+																/>
+															</div>
+															<div>
+																<label className="mb-1 block text-xs font-medium">
+																	현재까지 누적 납입액(원)
+																</label>
+																<CurrencyInput
+																	value={installmentForm.savedAmount}
+																	onChange={(value) =>
+																		setInstallmentForm((prev) => ({
+																			...prev,
+																			savedAmount: value,
+																		}))
+																	}
+																/>
+															</div>
+															<div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+																<label className="flex items-center gap-2 text-xs font-medium">
+																	<input
+																		type="checkbox"
+																		checked={installmentForm.isRecurring}
 																		onChange={(event) =>
 																			setInstallmentForm((prev) => ({
 																				...prev,
-																				cadence: event.target.value as Cadence,
-																				runDay: 1,
+																				isRecurring: event.target.checked,
+																			}))
+																		}
+																	/>
+																	정기 납입 규칙 사용
+																</label>
+															</div>
+															{installmentForm.isRecurring ? (
+																<div className="md:col-span-8 rounded-md border border-slate-200 bg-slate-50 p-3">
+																	<p className="mb-2 text-xs font-semibold text-slate-700">
+																		정기 납입 규칙
+																	</p>
+																	<div className="grid gap-3 md:grid-cols-4">
+																		<div>
+																			<label className="mb-1 block text-xs font-medium">
+																				주기
+																			</label>
+																			<select
+																				value={installmentForm.cadence}
+																				onChange={(event) =>
+																					setInstallmentForm((prev) => ({
+																						...prev,
+																						cadence: event.target
+																							.value as Cadence,
+																						runDay: 1,
+																					}))
+																				}
+																				className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+																			>
+																				{CADENCES.map((cadence) => (
+																					<option key={cadence} value={cadence}>
+																						{cadence === "WEEKLY"
+																							? "매주"
+																							: "매달"}
+																					</option>
+																				))}
+																			</select>
+																		</div>
+																		<div>
+																			<label className="mb-1 block text-xs font-medium">
+																				실행일(
+																				{installmentForm.cadence === "WEEKLY"
+																					? "1=월..7=일"
+																					: "매달 n일"}
+																				)
+																			</label>
+																			<input
+																				type="number"
+																				min="1"
+																				max={
+																					installmentForm.cadence === "WEEKLY"
+																						? "7"
+																						: "31"
+																				}
+																				step="1"
+																				className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+																				value={installmentForm.runDay}
+																				onChange={(event) =>
+																					setInstallmentForm((prev) => ({
+																						...prev,
+																						runDay: Number.parseInt(
+																							event.target.value || "1",
+																							10,
+																						),
+																					}))
+																				}
+																			/>
+																		</div>
+																		<div>
+																			<label className="mb-1 block text-xs font-medium">
+																				적용 시작
+																			</label>
+																			<select
+																				value={installmentForm.applyMode}
+																				onChange={(event) =>
+																					setInstallmentForm((prev) => ({
+																						...prev,
+																						applyMode: event.target
+																							.value as InstallmentApplyMode,
+																					}))
+																				}
+																				className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
+																			>
+																				{INSTALLMENT_APPLY_MODES.map((mode) => (
+																					<option key={mode} value={mode}>
+																						{mode === "TODAY"
+																							? "오늘부터"
+																							: "다음 회차부터"}
+																					</option>
+																				))}
+																			</select>
+																		</div>
+																		<div>
+																			<label className="mb-1 block text-xs font-medium">
+																				회차 납입액(원)
+																			</label>
+																			<CurrencyInput
+																				value={installmentForm.monthlyAmount}
+																				onChange={(value) =>
+																					setInstallmentForm((prev) => ({
+																						...prev,
+																						monthlyAmount: value,
+																					}))
+																				}
+																			/>
+																		</div>
+																	</div>
+																</div>
+															) : null}
+															<div>
+																<label className="mb-1 block text-xs font-medium">
+																	시작일
+																</label>
+																<input
+																	type="date"
+																	className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+																	value={installmentForm.startDate}
+																	onChange={(event) =>
+																		setInstallmentForm((prev) => ({
+																			...prev,
+																			startDate: event.target.value,
+																		}))
+																	}
+																/>
+															</div>
+															<div className="md:col-span-2">
+																<label className="mb-1 block text-xs font-medium">
+																	만기일
+																</label>
+																<div className="flex gap-2">
+																	<input
+																		type="date"
+																		className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+																		value={installmentForm.maturityDate ?? ""}
+																		onChange={(event) =>
+																			setInstallmentForm((prev) => ({
+																				...prev,
+																				maturityDate:
+																					event.target.value.length > 0
+																						? event.target.value
+																						: null,
+																			}))
+																		}
+																	/>
+																	<Button
+																		type="button"
+																		variant="outline"
+																		size="sm"
+																		className="shrink-0"
+																		onClick={() =>
+																			setInstallmentForm((prev) => ({
+																				...prev,
+																				maturityDate: null,
+																			}))
+																		}
+																	>
+																		해제
+																	</Button>
+																</div>
+															</div>
+															<div className="md:col-span-3">
+																<label className="mb-1 block text-xs font-medium">
+																	만기 혜택
+																</label>
+																<div className="grid grid-cols-2 gap-2">
+																	<select
+																		value={installmentForm.benefitType}
+																		onChange={(event) =>
+																			setInstallmentForm((prev) => ({
+																				...prev,
+																				benefitType: event.target
+																					.value as InstallmentBenefitType,
+																				benefitValue: 0,
 																			}))
 																		}
 																		className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
 																	>
-																		{CADENCES.map((cadence) => (
-																			<option key={cadence} value={cadence}>
-																				{cadence === "WEEKLY" ? "매주" : "매달"}
+																		{INSTALLMENT_BENEFIT_TYPES.map((type) => (
+																			<option key={type} value={type}>
+																				{type === "INTEREST_RATE"
+																					? "이율(%)"
+																					: "만기금액(원)"}
 																			</option>
 																		))}
 																	</select>
-																</div>
-																<div>
-																	<label className="mb-1 block text-xs font-medium">
-																		실행일(
-																		{installmentForm.cadence === "WEEKLY"
-																			? "1=월..7=일"
-																			: "매달 n일"}
-																		)
-																	</label>
 																	<input
 																		type="number"
-																		min="1"
-																		max={
-																			installmentForm.cadence === "WEEKLY"
-																				? "7"
-																				: "31"
+																		min="0"
+																		step={
+																			installmentForm.benefitType ===
+																			"INTEREST_RATE"
+																				? "0.01"
+																				: "1"
 																		}
-																		step="1"
 																		className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-																		value={installmentForm.runDay}
+																		value={installmentForm.benefitValue}
 																		onChange={(event) =>
 																			setInstallmentForm((prev) => ({
 																				...prev,
-																				runDay: Number.parseInt(
-																					event.target.value || "1",
-																					10,
+																				benefitValue: Number.parseFloat(
+																					event.target.value || "0",
 																				),
 																			}))
 																		}
-																	/>
-																</div>
-																<div>
-																	<label className="mb-1 block text-xs font-medium">
-																		적용 시작
-																	</label>
-																	<select
-																		value={installmentForm.applyMode}
-																		onChange={(event) =>
-																			setInstallmentForm((prev) => ({
-																				...prev,
-																				applyMode: event.target
-																					.value as InstallmentApplyMode,
-																			}))
-																		}
-																		className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																	>
-																		{INSTALLMENT_APPLY_MODES.map((mode) => (
-																			<option key={mode} value={mode}>
-																				{mode === "TODAY"
-																					? "오늘부터"
-																					: "다음 회차부터"}
-																			</option>
-																		))}
-																	</select>
-																</div>
-																<div>
-																	<label className="mb-1 block text-xs font-medium">
-																		회차 납입액(원)
-																	</label>
-																	<CurrencyInput
-																		value={installmentForm.monthlyAmount}
-																		onChange={(value) =>
-																			setInstallmentForm((prev) => ({
-																				...prev,
-																				monthlyAmount: value,
-																			}))
+																		placeholder={
+																			installmentForm.benefitType ===
+																			"INTEREST_RATE"
+																				? "예: 6.0"
+																				: "예: 50000000"
 																		}
 																	/>
 																</div>
 															</div>
 														</div>
-													) : null}
-													<div>
-														<label className="mb-1 block text-xs font-medium">
-															시작일
-														</label>
-														<input
-															type="date"
-															className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-															value={installmentForm.startDate}
-															onChange={(event) =>
-																setInstallmentForm((prev) => ({
-																	...prev,
-																	startDate: event.target.value,
-																}))
-															}
-														/>
+														<Button
+															type="button"
+															onClick={handleAddInstallment}
+															disabled={submittingInstallment}
+															className="mt-4"
+														>
+															{submittingInstallment
+																? "저장 중..."
+																: "적금 저장"}
+														</Button>
 													</div>
-													<div className="md:col-span-2">
-														<label className="mb-1 block text-xs font-medium">
-															만기일
-														</label>
-														<div className="flex gap-2">
+												</div>
+											</section>
+										) : null}
+
+										{activeDashboardSection === "FIXED" ? (
+											<section
+												id="fixed-expense-section"
+												className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+											>
+												<h2 className="text-xl font-semibold">고정 지출</h2>
+												<SectionYearMonthImportControl
+													onOpen={() => setSectionImportModalTarget("FIXED")}
+													disabled={copyingSectionTarget !== null}
+													loading={copyingSectionTarget === "FIXED"}
+												/>
+												<p className="mt-2 text-sm text-slate-600">
+													고정 지출 항목을 여러 개 추가하고 금액을 관리할 수
+													있습니다.
+												</p>
+												<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+													<div className="flex items-center justify-between">
+														<h3 className="font-semibold">고정 지출 항목</h3>
+														<span className="text-sm font-medium text-slate-700">
+															합계 {formatKrw(fixedExpenseTotal)}
+														</span>
+													</div>
+													<div className="mt-3">
+														{fixedExpenseItems.length === 0 ? (
+															<p className="text-sm text-slate-500">
+																등록된 고정 지출 항목이 없습니다.
+															</p>
+														) : null}
+														{fixedExpenseItems.length > 0 ? (
+															<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+																{fixedExpenseItems.map((item) => {
+																	const draft = expenseDrafts[item.id];
+																	if (draft === undefined) {
+																		return null;
+																	}
+																	return (
+																		<div
+																			key={item.id}
+																			className="rounded-lg border border-slate-200 bg-white p-2.5"
+																		>
+																			<div className="grid grid-cols-1 gap-2">
+																				<input
+																					className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+																					value={draft.name}
+																					onChange={(event) =>
+																						setExpenseDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								name: event.target.value,
+																							},
+																						}))
+																					}
+																				/>
+																				<CurrencyInput
+																					value={draft.amount}
+																					onChange={(value) =>
+																						setExpenseDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								amount: value,
+																							},
+																						}))
+																					}
+																				/>
+																			</div>
+																			<div className="mt-2 flex justify-end gap-1.5">
+																				<Button
+																					type="button"
+																					size="xs"
+																					onClick={() =>
+																						handleUpdateExpense(item)
+																					}
+																				>
+																					저장
+																				</Button>
+																				<Button
+																					type="button"
+																					size="xs"
+																					variant="outline"
+																					onClick={() =>
+																						handleDeleteExpense(item.id)
+																					}
+																				>
+																					삭제
+																				</Button>
+																			</div>
+																		</div>
+																	);
+																})}
+															</div>
+														) : null}
+													</div>
+													<div className="mt-4 border-t border-slate-200 pt-4">
+														<div className="grid grid-cols-3 gap-2">
 															<input
-																type="date"
-																className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-																value={installmentForm.maturityDate ?? ""}
+																className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
+																placeholder="예: 월세, 대출 이자, 구독, 기부"
+																value={expenseForms.FIXED.name}
 																onChange={(event) =>
-																	setInstallmentForm((prev) => ({
+																	setExpenseForms((prev) => ({
 																		...prev,
-																		maturityDate:
-																			event.target.value.length > 0
-																				? event.target.value
-																				: null,
+																		FIXED: {
+																			...prev.FIXED,
+																			name: event.target.value,
+																		},
 																	}))
 																}
 															/>
-															<Button
-																type="button"
-																variant="outline"
-																size="sm"
-																className="shrink-0"
-																onClick={() =>
-																	setInstallmentForm((prev) => ({
+															<CurrencyInput
+																value={expenseForms.FIXED.amount}
+																onChange={(value) =>
+																	setExpenseForms((prev) => ({
 																		...prev,
-																		maturityDate: null,
+																		FIXED: { ...prev.FIXED, amount: value },
 																	}))
-																}
-															>
-																해제
-															</Button>
-														</div>
-													</div>
-													<div className="md:col-span-3">
-														<label className="mb-1 block text-xs font-medium">
-															만기 혜택
-														</label>
-														<div className="grid grid-cols-2 gap-2">
-															<select
-																value={installmentForm.benefitType}
-																onChange={(event) =>
-																	setInstallmentForm((prev) => ({
-																		...prev,
-																		benefitType: event.target
-																			.value as InstallmentBenefitType,
-																		benefitValue: 0,
-																	}))
-																}
-																className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-															>
-																{INSTALLMENT_BENEFIT_TYPES.map((type) => (
-																	<option key={type} value={type}>
-																		{type === "INTEREST_RATE"
-																			? "이율(%)"
-																			: "만기금액(원)"}
-																	</option>
-																))}
-															</select>
-															<input
-																type="number"
-																min="0"
-																step={
-																	installmentForm.benefitType ===
-																	"INTEREST_RATE"
-																		? "0.01"
-																		: "1"
-																}
-																className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-																value={installmentForm.benefitValue}
-																onChange={(event) =>
-																	setInstallmentForm((prev) => ({
-																		...prev,
-																		benefitValue: Number.parseFloat(
-																			event.target.value || "0",
-																		),
-																	}))
-																}
-																placeholder={
-																	installmentForm.benefitType ===
-																	"INTEREST_RATE"
-																		? "예: 6.0"
-																		: "예: 50000000"
 																}
 															/>
 														</div>
+														<Button
+															type="button"
+															className="mt-2"
+															onClick={() => handleAddExpense("FIXED")}
+															disabled={submittingExpenseKind === "FIXED"}
+														>
+															{submittingExpenseKind === "FIXED"
+																? "추가 중..."
+																: "고정 지출 항목 추가"}
+														</Button>
 													</div>
 												</div>
-												<Button
-													type="button"
-													onClick={handleAddInstallment}
-													disabled={submittingInstallment}
-													className="mt-4"
-												>
-													{submittingInstallment ? "저장 중..." : "적금 저장"}
-												</Button>
-											</div>
-										</div>
-									</section>
+											</section>
+										) : null}
 
-									<section
-										id="fixed-expense-section"
-										className="self-start rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-12 lg:col-start-1 lg:row-start-3 lg:h-full lg:overflow-y-auto lg:pr-3"
-									>
-										<h2 className="text-xl font-semibold">고정 지출</h2>
-										<SectionYearMonthImportControl
-											onOpen={() => setSectionImportModalTarget("FIXED")}
-											disabled={copyingSectionTarget !== null}
-											loading={copyingSectionTarget === "FIXED"}
-										/>
-										<p className="mt-2 text-sm text-slate-600">
-											고정 지출 항목을 여러 개 추가하고 금액을 관리할 수
-											있습니다.
-										</p>
-										<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-											<div className="flex items-center justify-between">
-												<h3 className="font-semibold">고정 지출 항목</h3>
-												<span className="text-sm font-medium text-slate-700">
-													합계 {formatKrw(fixedExpenseTotal)}
-												</span>
-											</div>
-											<div className="mt-3">
-												{fixedExpenseItems.length === 0 ? (
-													<p className="text-sm text-slate-500">
-														등록된 고정 지출 항목이 없습니다.
-													</p>
-												) : null}
-												{fixedExpenseItems.length > 0 ? (
-													<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-														{fixedExpenseItems.map((item) => {
-															const draft = expenseDrafts[item.id];
-															if (draft === undefined) {
-																return null;
-															}
-															return (
-																<div
-																	key={item.id}
-																	className="rounded-lg border border-slate-200 bg-white p-2.5"
-																>
-																	<div className="grid grid-cols-1 gap-2">
-																		<input
-																			className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-																			value={draft.name}
-																			onChange={(event) =>
-																				setExpenseDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						name: event.target.value,
-																					},
-																				}))
-																			}
-																		/>
-																		<CurrencyInput
-																			value={draft.amount}
-																			onChange={(value) =>
-																				setExpenseDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						amount: value,
-																					},
-																				}))
-																			}
-																		/>
-																	</div>
-																	<div className="mt-2 flex justify-end gap-1.5">
-																		<Button
-																			type="button"
-																			size="xs"
-																			onClick={() => handleUpdateExpense(item)}
-																		>
-																			저장
-																		</Button>
-																		<Button
-																			type="button"
-																			size="xs"
-																			variant="outline"
-																			onClick={() =>
-																				handleDeleteExpense(item.id)
-																			}
-																		>
-																			삭제
-																		</Button>
-																	</div>
-																</div>
-															);
-														})}
+										{activeDashboardSection === "VARIABLE" ? (
+											<section
+												id="variable-expense-section"
+												className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+											>
+												<h2 className="text-xl font-semibold">비고정 지출</h2>
+												<SectionYearMonthImportControl
+													onOpen={() => setSectionImportModalTarget("VARIABLE")}
+													disabled={copyingSectionTarget !== null}
+													loading={copyingSectionTarget === "VARIABLE"}
+												/>
+												<p className="mt-2 text-sm text-slate-600">
+													비고정 지출 항목을 여러 개 추가하고 금액을 관리할 수
+													있습니다.
+												</p>
+												<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+													<div className="flex items-center justify-between">
+														<h3 className="font-semibold">비고정 지출 항목</h3>
+														<span className="text-sm font-medium text-slate-700">
+															합계 {formatKrw(variableExpenseTotal)}
+														</span>
 													</div>
-												) : null}
-											</div>
-											<div className="mt-4 border-t border-slate-200 pt-4">
-												<div className="grid grid-cols-3 gap-2">
-													<input
-														className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
-														placeholder="예: 월세, 대출 이자, 구독, 기부"
-														value={expenseForms.FIXED.name}
-														onChange={(event) =>
-															setExpenseForms((prev) => ({
-																...prev,
-																FIXED: {
-																	...prev.FIXED,
-																	name: event.target.value,
-																},
-															}))
-														}
-													/>
-													<CurrencyInput
-														value={expenseForms.FIXED.amount}
-														onChange={(value) =>
-															setExpenseForms((prev) => ({
-																...prev,
-																FIXED: { ...prev.FIXED, amount: value },
-															}))
-														}
-													/>
+													<div className="mt-3">
+														{variableExpenseItems.length === 0 ? (
+															<p className="text-sm text-slate-500">
+																등록된 비고정 지출 항목이 없습니다.
+															</p>
+														) : null}
+														{variableExpenseItems.length > 0 ? (
+															<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+																{variableExpenseItems.map((item) => {
+																	const draft = expenseDrafts[item.id];
+																	if (draft === undefined) {
+																		return null;
+																	}
+																	return (
+																		<div
+																			key={item.id}
+																			className="rounded-lg border border-slate-200 bg-white p-2.5"
+																		>
+																			<div className="grid grid-cols-1 gap-2">
+																				<input
+																					className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+																					value={draft.name}
+																					onChange={(event) =>
+																						setExpenseDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								name: event.target.value,
+																							},
+																						}))
+																					}
+																				/>
+																				<CurrencyInput
+																					value={draft.amount}
+																					onChange={(value) =>
+																						setExpenseDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								amount: value,
+																							},
+																						}))
+																					}
+																				/>
+																			</div>
+																			<div className="mt-2 flex justify-end gap-1.5">
+																				<Button
+																					type="button"
+																					size="xs"
+																					onClick={() =>
+																						handleUpdateExpense(item)
+																					}
+																				>
+																					저장
+																				</Button>
+																				<Button
+																					type="button"
+																					size="xs"
+																					variant="outline"
+																					onClick={() =>
+																						handleDeleteExpense(item.id)
+																					}
+																				>
+																					삭제
+																				</Button>
+																			</div>
+																		</div>
+																	);
+																})}
+															</div>
+														) : null}
+													</div>
+													<div className="mt-4 border-t border-slate-200 pt-4">
+														<div className="grid grid-cols-3 gap-2">
+															<input
+																className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
+																placeholder="예: 관리비, 수도세, 전기세"
+																value={expenseForms.VARIABLE.name}
+																onChange={(event) =>
+																	setExpenseForms((prev) => ({
+																		...prev,
+																		VARIABLE: {
+																			...prev.VARIABLE,
+																			name: event.target.value,
+																		},
+																	}))
+																}
+															/>
+															<CurrencyInput
+																value={expenseForms.VARIABLE.amount}
+																onChange={(value) =>
+																	setExpenseForms((prev) => ({
+																		...prev,
+																		VARIABLE: {
+																			...prev.VARIABLE,
+																			amount: value,
+																		},
+																	}))
+																}
+															/>
+														</div>
+														<Button
+															type="button"
+															className="mt-2"
+															onClick={() => handleAddExpense("VARIABLE")}
+															disabled={submittingExpenseKind === "VARIABLE"}
+														>
+															{submittingExpenseKind === "VARIABLE"
+																? "추가 중..."
+																: "비고정 지출 항목 추가"}
+														</Button>
+													</div>
 												</div>
-												<Button
-													type="button"
-													className="mt-2"
-													onClick={() => handleAddExpense("FIXED")}
-													disabled={submittingExpenseKind === "FIXED"}
-												>
-													{submittingExpenseKind === "FIXED"
-														? "추가 중..."
-														: "고정 지출 항목 추가"}
-												</Button>
-											</div>
-										</div>
-									</section>
+											</section>
+										) : null}
 
-									<section
-										id="variable-expense-section"
-										className="self-start rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-12 lg:col-start-1 lg:row-start-4 lg:h-full lg:overflow-y-auto lg:pr-3"
-									>
-										<h2 className="text-xl font-semibold">비고정 지출</h2>
-										<SectionYearMonthImportControl
-											onOpen={() => setSectionImportModalTarget("VARIABLE")}
-											disabled={copyingSectionTarget !== null}
-											loading={copyingSectionTarget === "VARIABLE"}
-										/>
-										<p className="mt-2 text-sm text-slate-600">
-											비고정 지출 항목을 여러 개 추가하고 금액을 관리할 수
-											있습니다.
-										</p>
-										<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-											<div className="flex items-center justify-between">
-												<h3 className="font-semibold">비고정 지출 항목</h3>
-												<span className="text-sm font-medium text-slate-700">
-													합계 {formatKrw(variableExpenseTotal)}
-												</span>
-											</div>
-											<div className="mt-3">
-												{variableExpenseItems.length === 0 ? (
-													<p className="text-sm text-slate-500">
-														등록된 비고정 지출 항목이 없습니다.
-													</p>
-												) : null}
-												{variableExpenseItems.length > 0 ? (
-													<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-														{variableExpenseItems.map((item) => {
-															const draft = expenseDrafts[item.id];
-															if (draft === undefined) {
-																return null;
-															}
-															return (
-																<div
-																	key={item.id}
-																	className="rounded-lg border border-slate-200 bg-white p-2.5"
-																>
-																	<div className="grid grid-cols-1 gap-2">
-																		<input
-																			className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-																			value={draft.name}
-																			onChange={(event) =>
-																				setExpenseDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						name: event.target.value,
-																					},
-																				}))
-																			}
-																		/>
-																		<CurrencyInput
-																			value={draft.amount}
-																			onChange={(value) =>
-																				setExpenseDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						amount: value,
-																					},
-																				}))
-																			}
-																		/>
-																	</div>
-																	<div className="mt-2 flex justify-end gap-1.5">
-																		<Button
-																			type="button"
-																			size="xs"
-																			onClick={() => handleUpdateExpense(item)}
-																		>
-																			저장
-																		</Button>
-																		<Button
-																			type="button"
-																			size="xs"
-																			variant="outline"
-																			onClick={() =>
-																				handleDeleteExpense(item.id)
-																			}
-																		>
-																			삭제
-																		</Button>
-																	</div>
-																</div>
-															);
-														})}
+										{activeDashboardSection === "CONSUMPTION" ? (
+											<section
+												id="consumption-section"
+												className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+											>
+												<h2 className="text-xl font-semibold">소비</h2>
+												<SectionYearMonthImportControl
+													onOpen={() =>
+														setSectionImportModalTarget("CONSUMPTION")
+													}
+													disabled={copyingSectionTarget !== null}
+													loading={copyingSectionTarget === "CONSUMPTION"}
+												/>
+												<p className="mt-2 text-sm text-slate-600">
+													계좌이체 등 예외적인 소비 항목을 기록합니다. 이 섹션
+													합계는 실제 사용 금액에 자동 합산됩니다.
+												</p>
+												<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+													<div className="flex items-center justify-between">
+														<h3 className="font-semibold">소비 항목</h3>
+														<span className="text-sm font-medium text-slate-700">
+															합계 {formatKrw(consumptionExpenseTotal)}
+														</span>
 													</div>
-												) : null}
-											</div>
-											<div className="mt-4 border-t border-slate-200 pt-4">
-												<div className="grid grid-cols-3 gap-2">
-													<input
-														className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
-														placeholder="예: 관리비, 수도세, 전기세"
-														value={expenseForms.VARIABLE.name}
-														onChange={(event) =>
-															setExpenseForms((prev) => ({
-																...prev,
-																VARIABLE: {
-																	...prev.VARIABLE,
-																	name: event.target.value,
-																},
-															}))
-														}
-													/>
-													<CurrencyInput
-														value={expenseForms.VARIABLE.amount}
-														onChange={(value) =>
-															setExpenseForms((prev) => ({
-																...prev,
-																VARIABLE: { ...prev.VARIABLE, amount: value },
-															}))
-														}
-													/>
-												</div>
-												<Button
-													type="button"
-													className="mt-2"
-													onClick={() => handleAddExpense("VARIABLE")}
-													disabled={submittingExpenseKind === "VARIABLE"}
-												>
-													{submittingExpenseKind === "VARIABLE"
-														? "추가 중..."
-														: "비고정 지출 항목 추가"}
-												</Button>
-											</div>
-										</div>
-									</section>
-
-									<section
-										id="consumption-section"
-										className="self-start rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-12 lg:col-start-1 lg:row-start-5 lg:h-full lg:overflow-y-auto lg:pr-3"
-									>
-										<h2 className="text-xl font-semibold">소비</h2>
-										<SectionYearMonthImportControl
-											onOpen={() => setSectionImportModalTarget("CONSUMPTION")}
-											disabled={copyingSectionTarget !== null}
-											loading={copyingSectionTarget === "CONSUMPTION"}
-										/>
-										<p className="mt-2 text-sm text-slate-600">
-											계좌이체 등 예외적인 소비 항목을 기록합니다. 이 섹션
-											합계는 실제 사용 금액에 자동 합산됩니다.
-										</p>
-										<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-											<div className="flex items-center justify-between">
-												<h3 className="font-semibold">소비 항목</h3>
-												<span className="text-sm font-medium text-slate-700">
-													합계 {formatKrw(consumptionExpenseTotal)}
-												</span>
-											</div>
-											<div className="mt-3">
-												{consumptionExpenseItems.length === 0 ? (
-													<p className="text-sm text-slate-500">
-														등록된 소비 항목이 없습니다.
-													</p>
-												) : null}
-												{consumptionExpenseItems.length > 0 ? (
-													<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-														{consumptionExpenseItems.map((item) => {
-															const draft = expenseDrafts[item.id];
-															if (draft === undefined) {
-																return null;
-															}
-															return (
-																<div
-																	key={item.id}
-																	className="rounded-lg border border-slate-200 bg-white p-2.5"
-																>
-																	<div className="grid grid-cols-1 gap-2">
-																		<input
-																			className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-																			value={draft.name}
-																			onChange={(event) =>
-																				setExpenseDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						name: event.target.value,
-																					},
-																				}))
-																			}
-																		/>
-																		<CurrencyInput
-																			value={draft.amount}
-																			onChange={(value) =>
-																				setExpenseDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						amount: value,
-																					},
-																				}))
-																			}
-																		/>
-																	</div>
-																	<div className="mt-2 flex justify-end gap-1.5">
-																		<Button
-																			type="button"
-																			size="xs"
-																			onClick={() => handleUpdateExpense(item)}
+													<div className="mt-3">
+														{consumptionExpenseItems.length === 0 ? (
+															<p className="text-sm text-slate-500">
+																등록된 소비 항목이 없습니다.
+															</p>
+														) : null}
+														{consumptionExpenseItems.length > 0 ? (
+															<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+																{consumptionExpenseItems.map((item) => {
+																	const draft = expenseDrafts[item.id];
+																	if (draft === undefined) {
+																		return null;
+																	}
+																	return (
+																		<div
+																			key={item.id}
+																			className="rounded-lg border border-slate-200 bg-white p-2.5"
 																		>
-																			저장
-																		</Button>
-																		<Button
-																			type="button"
-																			size="xs"
-																			variant="outline"
-																			onClick={() =>
-																				handleDeleteExpense(item.id)
-																			}
-																		>
-																			삭제
-																		</Button>
-																	</div>
-																</div>
-															);
-														})}
+																			<div className="grid grid-cols-1 gap-2">
+																				<input
+																					className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+																					value={draft.name}
+																					onChange={(event) =>
+																						setExpenseDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								name: event.target.value,
+																							},
+																						}))
+																					}
+																				/>
+																				<CurrencyInput
+																					value={draft.amount}
+																					onChange={(value) =>
+																						setExpenseDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								amount: value,
+																							},
+																						}))
+																					}
+																				/>
+																			</div>
+																			<div className="mt-2 flex justify-end gap-1.5">
+																				<Button
+																					type="button"
+																					size="xs"
+																					onClick={() =>
+																						handleUpdateExpense(item)
+																					}
+																				>
+																					저장
+																				</Button>
+																				<Button
+																					type="button"
+																					size="xs"
+																					variant="outline"
+																					onClick={() =>
+																						handleDeleteExpense(item.id)
+																					}
+																				>
+																					삭제
+																				</Button>
+																			</div>
+																		</div>
+																	);
+																})}
+															</div>
+														) : null}
 													</div>
-												) : null}
-											</div>
-											<div className="mt-4 border-t border-slate-200 pt-4">
-												<div className="grid grid-cols-3 gap-2">
-													<input
-														className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
-														placeholder="예: 계좌이체, 경조사비, 일시 지출"
-														value={expenseForms.CONSUMPTION.name}
-														onChange={(event) =>
-															setExpenseForms((prev) => ({
-																...prev,
-																CONSUMPTION: {
-																	...prev.CONSUMPTION,
-																	name: event.target.value,
-																},
-															}))
-														}
-													/>
-													<CurrencyInput
-														value={expenseForms.CONSUMPTION.amount}
-														onChange={(value) =>
-															setExpenseForms((prev) => ({
-																...prev,
-																CONSUMPTION: {
-																	...prev.CONSUMPTION,
-																	amount: value,
-																},
-															}))
-														}
-													/>
-												</div>
-												<Button
-													type="button"
-													className="mt-2"
-													onClick={() => handleAddExpense("CONSUMPTION")}
-													disabled={submittingExpenseKind === "CONSUMPTION"}
-												>
-													{submittingExpenseKind === "CONSUMPTION"
-														? "추가 중..."
-														: "소비 항목 추가"}
-												</Button>
-											</div>
-										</div>
-									</section>
-									<section
-										id="income-section"
-										className="self-start rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-12 lg:col-start-1 lg:row-start-6 lg:h-full lg:overflow-y-auto lg:pr-3"
-									>
-										<h2 className="text-xl font-semibold">수입</h2>
-										<SectionYearMonthImportControl
-											onOpen={() => setSectionImportModalTarget("INCOME")}
-											disabled={copyingSectionTarget !== null}
-											loading={copyingSectionTarget === "INCOME"}
-										/>
-										<p className="mt-2 text-sm text-slate-600">
-											예상치 못하게 들어온 수입 항목을 기록합니다. 이 섹션
-											합계는 월 잔액에 자동 가산됩니다.
-										</p>
-										<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-											<div className="flex items-center justify-between">
-												<h3 className="font-semibold">수입 항목</h3>
-												<span className="text-sm font-medium text-slate-700">
-													합계 {formatKrw(incomeTotal)}
-												</span>
-											</div>
-											<div className="mt-3">
-												{incomeExpenseItems.length === 0 ? (
-													<p className="text-sm text-slate-500">
-														등록된 수입 항목이 없습니다.
-													</p>
-												) : null}
-												{incomeExpenseItems.length > 0 ? (
-													<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-														{incomeExpenseItems.map((item) => {
-															const draft = expenseDrafts[item.id];
-															if (draft === undefined) {
-																return null;
-															}
-															return (
-																<div
-																	key={item.id}
-																	className="rounded-lg border border-slate-200 bg-white p-2.5"
-																>
-																	<div className="grid grid-cols-1 gap-2">
-																		<input
-																			className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-																			value={draft.name}
-																			onChange={(event) =>
-																				setExpenseDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						name: event.target.value,
-																					},
-																				}))
-																			}
-																		/>
-																		<CurrencyInput
-																			value={draft.amount}
-																			onChange={(value) =>
-																				setExpenseDrafts((prev) => ({
-																					...prev,
-																					[item.id]: {
-																						...draft,
-																						amount: value,
-																					},
-																				}))
-																			}
-																		/>
-																	</div>
-																	<div className="mt-2 flex justify-end gap-1.5">
-																		<Button
-																			type="button"
-																			size="xs"
-																			onClick={() => handleUpdateExpense(item)}
-																		>
-																			저장
-																		</Button>
-																		<Button
-																			type="button"
-																			size="xs"
-																			variant="outline"
-																			onClick={() =>
-																				handleDeleteExpense(item.id)
-																			}
-																		>
-																			삭제
-																		</Button>
-																	</div>
-																</div>
-															);
-														})}
+													<div className="mt-4 border-t border-slate-200 pt-4">
+														<div className="grid grid-cols-3 gap-2">
+															<input
+																className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
+																placeholder="예: 계좌이체, 경조사비, 일시 지출"
+																value={expenseForms.CONSUMPTION.name}
+																onChange={(event) =>
+																	setExpenseForms((prev) => ({
+																		...prev,
+																		CONSUMPTION: {
+																			...prev.CONSUMPTION,
+																			name: event.target.value,
+																		},
+																	}))
+																}
+															/>
+															<CurrencyInput
+																value={expenseForms.CONSUMPTION.amount}
+																onChange={(value) =>
+																	setExpenseForms((prev) => ({
+																		...prev,
+																		CONSUMPTION: {
+																			...prev.CONSUMPTION,
+																			amount: value,
+																		},
+																	}))
+																}
+															/>
+														</div>
+														<Button
+															type="button"
+															className="mt-2"
+															onClick={() => handleAddExpense("CONSUMPTION")}
+															disabled={submittingExpenseKind === "CONSUMPTION"}
+														>
+															{submittingExpenseKind === "CONSUMPTION"
+																? "추가 중..."
+																: "소비 항목 추가"}
+														</Button>
 													</div>
-												) : null}
-											</div>
-											<div className="mt-4 border-t border-slate-200 pt-4">
-												<div className="grid grid-cols-3 gap-2">
-													<input
-														className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
-														placeholder="예: 환급금, 상여금, 기타 수입"
-														value={expenseForms.INCOME.name}
-														onChange={(event) =>
-															setExpenseForms((prev) => ({
-																...prev,
-																INCOME: {
-																	...prev.INCOME,
-																	name: event.target.value,
-																},
-															}))
-														}
-													/>
-													<CurrencyInput
-														value={expenseForms.INCOME.amount}
-														onChange={(value) =>
-															setExpenseForms((prev) => ({
-																...prev,
-																INCOME: {
-																	...prev.INCOME,
-																	amount: value,
-																},
-															}))
-														}
-													/>
 												</div>
-												<Button
-													type="button"
-													className="mt-2"
-													onClick={() => handleAddExpense("INCOME")}
-													disabled={submittingExpenseKind === "INCOME"}
-												>
-													{submittingExpenseKind === "INCOME"
-														? "추가 중..."
-														: "수입 항목 추가"}
-												</Button>
-											</div>
-										</div>
-									</section>
-								</div>
-							)
+											</section>
+										) : null}
+										{activeDashboardSection === "INCOME" ? (
+											<section
+												id="income-section"
+												className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+											>
+												<h2 className="text-xl font-semibold">수입</h2>
+												<SectionYearMonthImportControl
+													onOpen={() => setSectionImportModalTarget("INCOME")}
+													disabled={copyingSectionTarget !== null}
+													loading={copyingSectionTarget === "INCOME"}
+												/>
+												<p className="mt-2 text-sm text-slate-600">
+													예상치 못하게 들어온 수입 항목을 기록합니다. 이 섹션
+													합계는 월 잔액에 자동 가산됩니다.
+												</p>
+												<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+													<div className="flex items-center justify-between">
+														<h3 className="font-semibold">수입 항목</h3>
+														<span className="text-sm font-medium text-slate-700">
+															합계 {formatKrw(incomeTotal)}
+														</span>
+													</div>
+													<div className="mt-3">
+														{incomeExpenseItems.length === 0 ? (
+															<p className="text-sm text-slate-500">
+																등록된 수입 항목이 없습니다.
+															</p>
+														) : null}
+														{incomeExpenseItems.length > 0 ? (
+															<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+																{incomeExpenseItems.map((item) => {
+																	const draft = expenseDrafts[item.id];
+																	if (draft === undefined) {
+																		return null;
+																	}
+																	return (
+																		<div
+																			key={item.id}
+																			className="rounded-lg border border-slate-200 bg-white p-2.5"
+																		>
+																			<div className="grid grid-cols-1 gap-2">
+																				<input
+																					className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+																					value={draft.name}
+																					onChange={(event) =>
+																						setExpenseDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								name: event.target.value,
+																							},
+																						}))
+																					}
+																				/>
+																				<CurrencyInput
+																					value={draft.amount}
+																					onChange={(value) =>
+																						setExpenseDrafts((prev) => ({
+																							...prev,
+																							[item.id]: {
+																								...draft,
+																								amount: value,
+																							},
+																						}))
+																					}
+																				/>
+																			</div>
+																			<div className="mt-2 flex justify-end gap-1.5">
+																				<Button
+																					type="button"
+																					size="xs"
+																					onClick={() =>
+																						handleUpdateExpense(item)
+																					}
+																				>
+																					저장
+																				</Button>
+																				<Button
+																					type="button"
+																					size="xs"
+																					variant="outline"
+																					onClick={() =>
+																						handleDeleteExpense(item.id)
+																					}
+																				>
+																					삭제
+																				</Button>
+																			</div>
+																		</div>
+																	);
+																})}
+															</div>
+														) : null}
+													</div>
+													<div className="mt-4 border-t border-slate-200 pt-4">
+														<div className="grid grid-cols-3 gap-2">
+															<input
+																className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
+																placeholder="예: 환급금, 상여금, 기타 수입"
+																value={expenseForms.INCOME.name}
+																onChange={(event) =>
+																	setExpenseForms((prev) => ({
+																		...prev,
+																		INCOME: {
+																			...prev.INCOME,
+																			name: event.target.value,
+																		},
+																	}))
+																}
+															/>
+															<CurrencyInput
+																value={expenseForms.INCOME.amount}
+																onChange={(value) =>
+																	setExpenseForms((prev) => ({
+																		...prev,
+																		INCOME: {
+																			...prev.INCOME,
+																			amount: value,
+																		},
+																	}))
+																}
+															/>
+														</div>
+														<Button
+															type="button"
+															className="mt-2"
+															onClick={() => handleAddExpense("INCOME")}
+															disabled={submittingExpenseKind === "INCOME"}
+														>
+															{submittingExpenseKind === "INCOME"
+																? "추가 중..."
+																: "수입 항목 추가"}
+														</Button>
+													</div>
+												</div>
+											</section>
+										) : null}
+									</div>
+								)}
+							</>
 						) : (
 							<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 								<h2 className="text-xl font-semibold">연말 결산</h2>
