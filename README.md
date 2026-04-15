@@ -8,8 +8,9 @@ React + Vite + Biome + Tailwind + shadcn 기반 개인 자산관리 프론트입
 - 연/월 선택 기반 월별 데이터 관리 (기본: 현재 연/월)
 - 빈 월에서 직전 월 기록 불러오기
 - 월 실제 사용 금액 입력/저장
-- 식별 번호 검증 단계 (검증 전에는 데이터 조회/수정 불가)
-- 기존 데이터 1회 마이그레이션 (`LEGACY_OWNER` + `2026-03` -> 입력한 식별 번호)
+- 카카오 로그인/로그아웃
+- 기존 데이터 1회 마이그레이션 (`LEGACY_OWNER` -> 첫 카카오 로그인 사용자)
+- 모든 데이터 조회/저장 `auth.uid()` 기반 분리 + RLS 적용
 - 지출 항목 입력/저장 (고정/비고정, 다중 항목 추가/수정/삭제)
 - 주식 보유 입력/저장 (토스증권, 삼성증권)
 - 주식 모으기 스케줄 입력/수정/저장
@@ -23,7 +24,7 @@ React + Vite + Biome + Tailwind + shadcn 기반 개인 자산관리 프론트입
 - 현재가/평가손익 자동 계산 (국내: Supabase Edge Function 기반 KRX OpenAPI 프록시, 해외 fallback: EODHD → FMP → Alpha Vantage → Twelve Data)
 - 현재가 캐시(30분) + 수동 갱신 버튼
 - API 크레딧/Rate limit 감지 시 해당 공급자 1분 쿨다운 후 자동 fallback
-- 주식 검색: 국내/해외 분리 검색창 + 티커/영문명 + 주요 한글 종목명 별칭 지원
+- 주식 검색: 시장 옵션 기반 단일 검색창 + 티커/영문명 + 주요 한글 종목명 별칭 지원
 - USD/KRW 현재 환율 연동(Frankfurter 우선, 실패 시 주식 API fallback) 및 미국 주식 USD/KRW 동시 표시
 - 적금 입력/수정/저장 (월 납입액, 시작일, 만기일(선택), 만기 혜택 선택: 이율/만기금액)
 - 적금 정기 납입 규칙 (기존 누적 납입액 + 주기/실행일/회차금액 + 오늘부터/다음회차부터)
@@ -68,17 +69,31 @@ Supabase SQL Editor에서 아래 파일을 실행하세요.
 
 - `supabase/schema.sql`
 
-이미 사용 중인 DB라도 같은 파일을 다시 실행하면 `user_code` 컬럼/제약 추가와
-월별 분리(`year_month`) 및 기존 데이터(`2026-03`) 마이그레이션 준비가 함께 반영됩니다.
+이미 사용 중인 DB라도 같은 파일을 다시 실행하면 월별 분리(`year_month`), 카카오
+로그인용 `claim_legacy_data()` 함수, `auth.uid()` 기반 RLS 정책이 함께 반영됩니다.
 
-## 3) 실행
+## 3) 카카오 로그인 설정
+
+Supabase Dashboard에서 `Authentication > Providers > Kakao`를 활성화해야 합니다.
+
+필수 설정:
+
+1. Kakao Developers에서 앱 생성
+2. Kakao REST API Key를 Supabase Kakao Provider에 입력
+3. Kakao Redirect URI에 Supabase 콜백 URL 등록
+   - 형식: `https://<project-ref>.supabase.co/auth/v1/callback`
+4. Supabase `Authentication > URL Configuration`에 사이트 URL/추가 리디렉션 URL 등록
+   - 로컬: `http://localhost:5173/my-hundred-million/` 또는 실제 개발 URL
+   - GitHub Pages: `https://ea-st-ring.github.io/my-hundred-million/`
+
+## 4) 실행
 
 ```bash
 npm install
 npm run dev
 ```
 
-## 4) GitHub Pages 배포
+## 5) GitHub Pages 배포
 
 이 저장소는 GitHub Actions 기반 Pages 배포가 설정되어 있습니다.
 

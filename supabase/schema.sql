@@ -454,7 +454,82 @@ before update on public.installment_savings
 for each row
 execute function public.touch_updated_at();
 
--- 1인 개인용 MVP: anon 공개 쓰기 허용
+create or replace function public.claim_legacy_data()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+	current_user_key text := auth.uid()::text;
+	legacy_count bigint := 0;
+	other_owner_count bigint := 0;
+	own_count bigint := 0;
+	migrated boolean := false;
+begin
+	if auth.uid() is null then
+		raise exception '로그인이 필요합니다.';
+	end if;
+
+	select count(*)
+	into own_count
+	from public.finance_overview
+	where user_code = current_user_key;
+
+	if own_count > 0 then
+		return jsonb_build_object('migrated', false);
+	end if;
+
+	select count(*)
+	into other_owner_count
+	from public.finance_overview
+	where user_code <> 'LEGACY_OWNER';
+
+	if other_owner_count > 0 then
+		raise exception '이미 다른 카카오 계정에 연결된 데이터입니다.';
+	end if;
+
+	select count(*)
+	into legacy_count
+	from public.finance_overview
+	where user_code = 'LEGACY_OWNER';
+
+	if legacy_count > 0 then
+		update public.finance_overview
+		set user_code = current_user_key
+		where user_code = 'LEGACY_OWNER';
+
+		update public.expense_items
+		set user_code = current_user_key
+		where user_code = 'LEGACY_OWNER';
+
+		update public.stock_holdings
+		set user_code = current_user_key
+		where user_code = 'LEGACY_OWNER';
+
+		update public.stock_accumulation_logs
+		set user_code = current_user_key
+		where user_code = 'LEGACY_OWNER';
+
+		update public.installment_savings
+		set user_code = current_user_key
+		where user_code = 'LEGACY_OWNER';
+
+		update public.installment_contribution_logs
+		set user_code = current_user_key
+		where user_code = 'LEGACY_OWNER';
+
+		migrated := true;
+	end if;
+
+	return jsonb_build_object('migrated', migrated);
+end;
+$$;
+
+revoke all on function public.claim_legacy_data() from public;
+grant execute on function public.claim_legacy_data() to authenticated;
+
+-- Kakao 로그인 사용자 본인 데이터만 조회/수정 허용
 alter table public.finance_overview enable row level security;
 alter table public.stock_holdings enable row level security;
 alter table public.stock_accumulation_logs enable row level security;
@@ -463,43 +538,55 @@ alter table public.installment_savings enable row level security;
 alter table public.installment_contribution_logs enable row level security;
 
 drop policy if exists "public_all_finance_overview" on public.finance_overview;
-create policy "public_all_finance_overview"
+drop policy if exists "auth_own_finance_overview" on public.finance_overview;
+create policy "auth_own_finance_overview"
 on public.finance_overview
 for all
-using (true)
-with check (true);
+to authenticated
+using (auth.uid()::text = user_code)
+with check (auth.uid()::text = user_code);
 
 drop policy if exists "public_all_stock_holdings" on public.stock_holdings;
-create policy "public_all_stock_holdings"
+drop policy if exists "auth_own_stock_holdings" on public.stock_holdings;
+create policy "auth_own_stock_holdings"
 on public.stock_holdings
 for all
-using (true)
-with check (true);
+to authenticated
+using (auth.uid()::text = user_code)
+with check (auth.uid()::text = user_code);
 
 drop policy if exists "public_all_stock_accumulation_logs" on public.stock_accumulation_logs;
-create policy "public_all_stock_accumulation_logs"
+drop policy if exists "auth_own_stock_accumulation_logs" on public.stock_accumulation_logs;
+create policy "auth_own_stock_accumulation_logs"
 on public.stock_accumulation_logs
 for all
-using (true)
-with check (true);
+to authenticated
+using (auth.uid()::text = user_code)
+with check (auth.uid()::text = user_code);
 
 drop policy if exists "public_all_expense_items" on public.expense_items;
-create policy "public_all_expense_items"
+drop policy if exists "auth_own_expense_items" on public.expense_items;
+create policy "auth_own_expense_items"
 on public.expense_items
 for all
-using (true)
-with check (true);
+to authenticated
+using (auth.uid()::text = user_code)
+with check (auth.uid()::text = user_code);
 
 drop policy if exists "public_all_installment_savings" on public.installment_savings;
-create policy "public_all_installment_savings"
+drop policy if exists "auth_own_installment_savings" on public.installment_savings;
+create policy "auth_own_installment_savings"
 on public.installment_savings
 for all
-using (true)
-with check (true);
+to authenticated
+using (auth.uid()::text = user_code)
+with check (auth.uid()::text = user_code);
 
 drop policy if exists "public_all_installment_contribution_logs" on public.installment_contribution_logs;
-create policy "public_all_installment_contribution_logs"
+drop policy if exists "auth_own_installment_contribution_logs" on public.installment_contribution_logs;
+create policy "auth_own_installment_contribution_logs"
 on public.installment_contribution_logs
 for all
-using (true)
-with check (true);
+to authenticated
+using (auth.uid()::text = user_code)
+with check (auth.uid()::text = user_code);

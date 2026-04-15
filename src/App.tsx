@@ -1,3 +1,4 @@
+import type { User } from "@supabase/supabase-js";
 import {
 	ArcElement,
 	Chart as ChartJS,
@@ -24,6 +25,7 @@ import {
 	parseIntegerInput,
 } from "@/lib/format";
 import {
+	activateAuthenticatedUser,
 	clearActiveUserCode,
 	copyPreviousMonthData,
 	copySectionDataFromYearMonth,
@@ -45,7 +47,6 @@ import {
 	updateExpenseItem,
 	updateHolding,
 	updateInstallment,
-	verifyAndActivateUserCode,
 } from "@/lib/repository";
 import {
 	fetchCurrentPrice,
@@ -54,7 +55,13 @@ import {
 	hasUsStockApiKey,
 	searchStockSymbolsByMarket,
 } from "@/lib/stocks";
-import { hasSupabaseEnv } from "@/lib/supabase";
+import {
+	assertSupabase,
+	getUserDisplayName,
+	hasSupabaseEnv,
+	signInWithKakao,
+	signOutSupabase,
+} from "@/lib/supabase";
 import {
 	type AccumulationCurrency,
 	type AccumulationType,
@@ -153,7 +160,6 @@ const defaultExpenseDraft: ExpenseDraft = {
 
 const QUOTE_CACHE_STORAGE_KEY = "my-hundred-million.quote-cache.v1";
 const QUOTE_CACHE_TTL_MS = 30 * 60 * 1000;
-const USER_CODE_STORAGE_KEY = "my-hundred-million.user-code.v1";
 
 type CachedQuoteEntry = {
 	price: number;
@@ -207,9 +213,12 @@ function App() {
 	>({});
 	const [loading, setLoading] = useState(true);
 	const [message, setMessage] = useState("");
-	const [userCodeInput, setUserCodeInput] = useState("");
-	const [verifiedUserCode, setVerifiedUserCode] = useState<string | null>(null);
-	const [verifyingUserCode, setVerifyingUserCode] = useState(false);
+	const [authUser, setAuthUser] = useState<User | null>(null);
+	const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(
+		null,
+	);
+	const [authLoading, setAuthLoading] = useState(true);
+	const [authActionPending, setAuthActionPending] = useState(false);
 	const [selectedYearMonth, setSelectedYearMonth] = useState(() =>
 		getInitialYearMonthFromQuery(),
 	);
@@ -434,52 +443,97 @@ function App() {
 		[holdings],
 	);
 
-	const verifyUserCode = useCallback(
-		async (rawCode: string, options?: { silent?: boolean }) => {
-			if (!hasSupabaseEnv) {
-				setMessage("Supabase 환경변수를 먼저 설정해주세요.");
+	const activateSessionUser = useCallback(
+		async (user: User | null, options?: { silent?: boolean }) => {
+			setAuthUser(user);
+			if (user === null) {
+				clearActiveUserCode();
+				setAuthenticatedUserId(null);
+				setOverview(defaultOverview);
+				setExpenseItems([]);
+				setHoldings([]);
+				setInstallments([]);
+				setQuotes({});
+				setSettlementData(null);
 				return;
 			}
-			const userCode = rawCode.trim().toUpperCase();
-			if (userCode.length < 4) {
-				if (!options?.silent) {
-					setMessage("식별 번호는 4자 이상 입력해주세요.");
-				}
-				return;
-			}
-			setVerifyingUserCode(true);
+
+			setAuthActionPending(true);
 			try {
-				const result = await verifyAndActivateUserCode(userCode);
-				setVerifiedUserCode(userCode);
-				setUserCodeInput(userCode);
-				localStorage.setItem(USER_CODE_STORAGE_KEY, userCode);
-				setMessage(
-					result.migrated
-						? "기존 데이터가 현재 식별 번호로 마이그레이션되었습니다."
-						: "식별 번호 확인이 완료되었습니다.",
-				);
+				const result = await activateAuthenticatedUser();
+				setAuthenticatedUserId(result.userId);
+				if (!options?.silent) {
+					setMessage(
+						result.migrated
+							? "기존 데이터가 현재 카카오 계정으로 마이그레이션되었습니다."
+							: "카카오 로그인이 완료되었습니다.",
+					);
+				}
 			} catch (error) {
 				clearActiveUserCode();
-				setVerifiedUserCode(null);
-				localStorage.removeItem(USER_CODE_STORAGE_KEY);
+				setAuthenticatedUserId(null);
 				if (!options?.silent) {
 					setMessage(extractError(error));
 				}
 			} finally {
-				setVerifyingUserCode(false);
+				setAuthActionPending(false);
 			}
 		},
 		[],
 	);
 
 	useEffect(() => {
-		const savedCode = localStorage.getItem(USER_CODE_STORAGE_KEY);
-		if (savedCode === null || savedCode.trim().length === 0) {
+		if (!hasSupabaseEnv) {
+			setAuthLoading(false);
 			return;
 		}
-		setUserCodeInput(savedCode.trim().toUpperCase());
-		verifyUserCode(savedCode, { silent: true }).catch(() => {});
-	}, [verifyUserCode]);
+
+		let cancelled = false;
+		const client = assertSupabase();
+
+		async function initializeAuth() {
+			try {
+				const {
+					data: { user },
+					error,
+				} = await client.auth.getUser();
+				if (cancelled) {
+					return;
+				}
+				if (error !== null) {
+					setMessage(error.message);
+				}
+				await activateSessionUser(user, { silent: true });
+			} catch (error) {
+				if (!cancelled) {
+					setMessage(extractError(error));
+				}
+			} finally {
+				if (!cancelled) {
+					setAuthLoading(false);
+				}
+			}
+		}
+
+		void initializeAuth();
+
+		const {
+			data: { subscription },
+		} = client.auth.onAuthStateChange((event, session) => {
+			if (cancelled) {
+				return;
+			}
+			setAuthLoading(false);
+			void activateSessionUser(session?.user ?? null, {
+				silent: event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED",
+			});
+		});
+
+		return () => {
+			cancelled = true;
+			subscription.unsubscribe();
+		};
+	}, [activateSessionUser]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -490,7 +544,7 @@ function App() {
 				setLoading(false);
 				return;
 			}
-			if (verifiedUserCode === null) {
+			if (authenticatedUserId === null) {
 				setLoading(false);
 				return;
 			}
@@ -533,7 +587,7 @@ function App() {
 		return () => {
 			cancelled = true;
 		};
-	}, [selectedYearMonth, verifiedUserCode]);
+	}, [authenticatedUserId, selectedYearMonth]);
 
 	const refreshUsdKrwRate = useCallback(async (silent = false) => {
 		setLoadingFxRate(true);
@@ -627,7 +681,7 @@ function App() {
 
 	useEffect(() => {
 		let cancelled = false;
-		if (verifiedUserCode === null || activeTab !== "YEARLY_SETTLEMENT") {
+		if (authenticatedUserId === null || activeTab !== "YEARLY_SETTLEMENT") {
 			return;
 		}
 		setLoadingSettlementData(true);
@@ -650,7 +704,7 @@ function App() {
 		return () => {
 			cancelled = true;
 		};
-	}, [activeTab, verifiedUserCode]);
+	}, [activeTab, authenticatedUserId]);
 
 	const fixedExpenseTotal = useMemo(
 		() =>
@@ -856,17 +910,25 @@ function App() {
 		}
 	}
 
-	function handleResetUserCode() {
-		clearActiveUserCode();
-		localStorage.removeItem(USER_CODE_STORAGE_KEY);
-		setVerifiedUserCode(null);
-		setUserCodeInput("");
-		setMessage("");
-		setOverview(defaultOverview);
-		setExpenseItems([]);
-		setHoldings([]);
-		setInstallments([]);
-		setQuotes({});
+	async function handleSignOut() {
+		setAuthActionPending(true);
+		try {
+			await signOutSupabase();
+			clearActiveUserCode();
+			setAuthenticatedUserId(null);
+			setAuthUser(null);
+			setMessage("로그아웃되었습니다.");
+			setOverview(defaultOverview);
+			setExpenseItems([]);
+			setHoldings([]);
+			setInstallments([]);
+			setQuotes({});
+			setSettlementData(null);
+		} catch (error) {
+			setMessage(extractError(error));
+		} finally {
+			setAuthActionPending(false);
+		}
 	}
 
 	async function handleCopyPreviousMonth() {
@@ -1826,15 +1888,15 @@ function App() {
 		[],
 	);
 
-	if (verifiedUserCode === null) {
+	if (authLoading || authenticatedUserId === null) {
 		return (
 			<main className="min-h-screen bg-zinc-100 px-3 py-8 text-slate-900 md:px-6 xl:px-8">
 				<div className="mx-auto max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
 					<p className="text-sm text-slate-500">my-hundred-million</p>
-					<h1 className="mt-2 text-2xl font-semibold">식별 번호 확인</h1>
+					<h1 className="mt-2 text-2xl font-semibold">카카오 로그인</h1>
 					<p className="mt-3 text-sm text-slate-600">
-						데이터 수정 전 식별 번호를 먼저 검증합니다. 기존 데이터는 첫 인증 시
-						현재 식별 번호로 자동 마이그레이션됩니다.
+						카카오 계정으로 로그인한 뒤 데이터를 조회하고 수정할 수 있습니다.
+						기존 데이터는 첫 로그인 사용자에게 1회 자동 귀속됩니다.
 					</p>
 					{!hasSupabaseEnv ? (
 						<div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
@@ -1842,23 +1904,20 @@ function App() {
 						</div>
 					) : null}
 					<div className="mt-4 flex gap-2">
-						<input
-							className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm uppercase"
-							placeholder="예: DONGHYUN-2026"
-							value={userCodeInput}
-							onChange={(event) => setUserCodeInput(event.target.value)}
-							onKeyDown={(event) => {
-								if (event.key === "Enter") {
-									void verifyUserCode(userCodeInput);
-								}
-							}}
-						/>
 						<Button
 							type="button"
-							onClick={() => verifyUserCode(userCodeInput)}
-							disabled={verifyingUserCode || !hasSupabaseEnv}
+							onClick={() => {
+								setAuthActionPending(true);
+								void signInWithKakao().catch((error) => {
+									setMessage(extractError(error));
+									setAuthActionPending(false);
+								});
+							}}
+							disabled={authLoading || authActionPending || !hasSupabaseEnv}
 						>
-							{verifyingUserCode ? "검증 중..." : "검증"}
+							{authLoading || authActionPending
+								? "로그인 준비 중..."
+								: "카카오로 로그인"}
 						</Button>
 					</div>
 					{message.length > 0 ? (
@@ -1961,9 +2020,9 @@ function App() {
 							</p>
 							<div className="mt-4 grid gap-3">
 								<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">식별 번호</p>
+									<p className="text-xs text-slate-500">카카오 계정</p>
 									<p className="mt-1 text-sm font-semibold">
-										{verifiedUserCode}
+										{getUserDisplayName(authUser)}
 									</p>
 								</div>
 								<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -2014,9 +2073,10 @@ function App() {
 								<Button
 									type="button"
 									variant="outline"
-									onClick={handleResetUserCode}
+									onClick={handleSignOut}
+									disabled={authActionPending}
 								>
-									식별 번호 변경
+									로그아웃
 								</Button>
 							</div>
 							<div className="mt-6 border-t border-slate-200 pt-4">

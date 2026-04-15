@@ -98,13 +98,9 @@ export const LEGACY_YEAR_MONTH = "2026-03";
 let activeUserCode: string | null = null;
 let activeYearMonth: string | null = null;
 
-function normalizeUserCode(userCode: string): string {
-	return userCode.trim().toUpperCase();
-}
-
 function requireUserCode(): string {
 	if (activeUserCode === null || activeUserCode.length === 0) {
-		throw new Error("식별 번호 검증이 필요합니다.");
+		throw new Error("로그인이 필요합니다.");
 	}
 	return activeUserCode;
 }
@@ -177,112 +173,36 @@ export type SettlementDataset = {
 	holdings: SettlementHoldingSnapshot[];
 };
 
-async function migrateLegacyDataToUserCode(userCode: string): Promise<void> {
+export async function activateAuthenticatedUser(): Promise<{
+	migrated: boolean;
+	userId: string;
+}> {
 	const client = assertSupabase();
-
-	const results = await Promise.all([
-		client
-			.from("finance_overview")
-			.update({ user_code: userCode, year_month: LEGACY_YEAR_MONTH })
-			.eq("user_code", LEGACY_USER_CODE),
-		client
-			.from("expense_items")
-			.update({ user_code: userCode, year_month: LEGACY_YEAR_MONTH })
-			.eq("user_code", LEGACY_USER_CODE),
-		client
-			.from("stock_holdings")
-			.update({ user_code: userCode, year_month: LEGACY_YEAR_MONTH })
-			.eq("user_code", LEGACY_USER_CODE),
-		client
-			.from("stock_accumulation_logs")
-			.update({ user_code: userCode, year_month: LEGACY_YEAR_MONTH })
-			.eq("user_code", LEGACY_USER_CODE),
-		client
-			.from("installment_savings")
-			.update({ user_code: userCode, year_month: LEGACY_YEAR_MONTH })
-			.eq("user_code", LEGACY_USER_CODE),
-		client
-			.from("installment_contribution_logs")
-			.update({ user_code: userCode, year_month: LEGACY_YEAR_MONTH })
-			.eq("user_code", LEGACY_USER_CODE),
-	]);
-	for (const result of results) {
-		if (result.error !== null) {
-			throw new Error(result.error.message);
-		}
+	const {
+		data: { user },
+		error: userError,
+	} = await client.auth.getUser();
+	if (userError !== null) {
+		throw new Error(userError.message);
 	}
-}
-
-export async function verifyAndActivateUserCode(
-	inputCode: string,
-): Promise<{ migrated: boolean }> {
-	const client = assertSupabase();
-	const userCode = normalizeUserCode(inputCode);
-	if (userCode.length < 4) {
-		throw new Error("식별 번호는 4자 이상 입력해주세요.");
+	if (user === null) {
+		throw new Error("로그인이 필요합니다.");
 	}
 
-	const { data: ownOverviewRows, error: ownOverviewError } = await client
-		.from("finance_overview")
-		.select("id")
-		.eq("user_code", userCode)
-		.limit(1);
-	if (ownOverviewError !== null) {
-		throw new Error(ownOverviewError.message);
+	const { data, error } = await client.rpc("claim_legacy_data");
+	if (error !== null) {
+		throw new Error(error.message);
 	}
 
-	if ((ownOverviewRows ?? []).length > 0) {
-		activeUserCode = userCode;
-		return { migrated: false };
-	}
-
-	const { data: legacyOverviewRows, error: legacyOverviewError } = await client
-		.from("finance_overview")
-		.select("id")
-		.eq("user_code", LEGACY_USER_CODE)
-		.limit(1);
-	if (legacyOverviewError !== null) {
-		throw new Error(legacyOverviewError.message);
-	}
-
-	if ((legacyOverviewRows ?? []).length > 0) {
-		await migrateLegacyDataToUserCode(userCode);
-		activeUserCode = userCode;
-		return { migrated: true };
-	}
-
-	const { data: anyOverview, error: anyOverviewError } = await client
-		.from("finance_overview")
-		.select("id")
-		.limit(1);
-	if (anyOverviewError !== null) {
-		throw new Error(anyOverviewError.message);
-	}
-
-	if ((anyOverview ?? []).length > 0) {
-		throw new Error("식별 번호가 일치하지 않습니다.");
-	}
-
-	const { error: createOverviewError } = await client
-		.from("finance_overview")
-		.insert({
-			user_code: userCode,
-			year_month: LEGACY_YEAR_MONTH,
-			salary: 0,
-			actual_spent: 0,
-			realized_pnl: 0,
-			memo: "",
-			toss_deposit_amount: 0,
-			toss_deposit_currency: "KRW",
-			samsung_deposit_amount: 0,
-			samsung_deposit_currency: "KRW",
-		});
-	if (createOverviewError !== null) {
-		throw new Error(createOverviewError.message);
-	}
-
-	activeUserCode = userCode;
-	return { migrated: false };
+	activeUserCode = user.id;
+	return {
+		migrated:
+			typeof data === "object" &&
+			data !== null &&
+			"migrated" in data &&
+			data.migrated === true,
+		userId: user.id,
+	};
 }
 
 function getPreviousYearMonth(yearMonth: string): string {
