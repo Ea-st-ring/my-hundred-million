@@ -1,4 +1,19 @@
-export const BROKERS = ["TOSS", "SAMSUNG"] as const;
+export const BROKERS = [
+	"KOREA_INVEST",
+	"MIRAE_ASSET",
+	"NH_INVESTMENT",
+	"SAMSUNG",
+	"TOSS",
+	"KIWOOM",
+] as const;
+export const BROKER_LABELS: Record<(typeof BROKERS)[number], string> = {
+	KOREA_INVEST: "한국투자증권",
+	MIRAE_ASSET: "미래에셋증권",
+	NH_INVESTMENT: "NH투자증권",
+	SAMSUNG: "삼성증권",
+	TOSS: "토스증권",
+	KIWOOM: "키움증권",
+};
 export const MARKETS = ["KR", "US"] as const;
 export const ACCUMULATION_TYPES = ["AMOUNT", "SHARES"] as const;
 export const ACCUMULATION_CURRENCIES = ["KRW", "USD"] as const;

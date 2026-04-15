@@ -65,6 +65,7 @@ import {
 import {
 	type AccumulationCurrency,
 	type AccumulationType,
+	BROKER_LABELS,
 	BROKERS,
 	CADENCES,
 	type Cadence,
@@ -1556,7 +1557,7 @@ function App() {
 			BROKERS.map((broker) => ({
 				broker,
 				items: holdings.filter((item) => item.broker === broker),
-			})),
+			})).filter((group) => group.items.length > 0),
 		[holdings],
 	);
 
@@ -1896,7 +1897,6 @@ function App() {
 					<h1 className="mt-2 text-2xl font-semibold">카카오 로그인</h1>
 					<p className="mt-3 text-sm text-slate-600">
 						카카오 계정으로 로그인한 뒤 데이터를 조회하고 수정할 수 있습니다.
-						기존 데이터는 첫 로그인 사용자에게 1회 자동 귀속됩니다.
 					</p>
 					{!hasSupabaseEnv ? (
 						<div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
@@ -2319,9 +2319,7 @@ function App() {
 												id="savings-stock-section"
 												className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
 											>
-												<h2 className="text-xl font-semibold">
-													주식 (토스증권 / 삼성증권)
-												</h2>
+												<h2 className="text-xl font-semibold">주식</h2>
 												<SectionYearMonthImportControl
 													onOpen={() => setSectionImportModalTarget("STOCK")}
 													disabled={copyingSectionTarget !== null}
@@ -2461,16 +2459,19 @@ function App() {
 													) : null}
 
 													<div className="mt-5 space-y-4">
+														{brokerGroups.length === 0 ? (
+															<div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+																등록된 종목이 없습니다.
+															</div>
+														) : null}
 														{brokerGroups.map((group) => (
 															<div
 																className="rounded-xl border border-slate-200 bg-white p-4"
 																key={group.broker}
 															>
 																<h4 className="font-semibold">
-																	{group.broker === "TOSS"
-																		? "토스증권"
-																		: "삼성증권"}{" "}
-																	({group.items.length})
+																	{BROKER_LABELS[group.broker]} (
+																	{group.items.length})
 																</h4>
 																<div className="mt-3 space-y-3">
 																	{group.items.length === 0 ? (
@@ -2968,7 +2969,7 @@ function App() {
 													>
 														{BROKERS.map((broker) => (
 															<option value={broker} key={broker}>
-																{broker === "TOSS" ? "토스증권" : "삼성증권"}
+																{BROKER_LABELS[broker]}
 															</option>
 														))}
 													</select>
