@@ -6,24 +6,47 @@ import {
 	Legend,
 	Tooltip,
 } from "chart.js";
-import {
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useMemo,
-	useState,
-} from "react";
-import { Doughnut } from "react-chartjs-2";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CurrencyInput } from "@/components/common/currency-input";
+import { DashboardStatCard } from "@/components/common/dashboard-stat-card";
+import { LayerModal } from "@/components/common/layer-modal";
+import { SectionYearMonthImportControl } from "@/components/common/section-year-month-import-control";
+import { ToastMessage } from "@/components/common/toast-message";
+import { DashboardHeader } from "@/components/layout/dashboard-header";
+import { DashboardKpiStrip } from "@/components/layout/dashboard-kpi-strip";
+import { DashboardTopControls } from "@/components/layout/dashboard-top-controls";
+import { PageContainer } from "@/components/layout/page-container";
+import { SectionImportModal } from "@/components/layout/section-import-modal";
+import { SidebarMonthlyInputs } from "@/components/layout/sidebar-monthly-inputs";
+import { SidebarMonthlyOverview } from "@/components/layout/sidebar-monthly-overview";
+import { SidebarStatusPanel } from "@/components/layout/sidebar-status-panel";
+import { YearlySettlementSection } from "@/components/layout/yearly-settlement-section";
+import { HoldingFormModal } from "@/components/sections/holding-form-modal";
+import { StockDepositModal } from "@/components/sections/stock-deposit-modal";
+import { StockHoldingItemCard } from "@/components/sections/stock-holding-item-card";
 import { Button } from "@/components/ui/button";
 import {
-	clampPercent,
-	formatFxRate,
-	formatKrw,
-	formatNumber,
-	formatUsd,
-	parseIntegerInput,
-} from "@/lib/format";
+	buildHoldingQuoteCacheKey,
+	type CsvRow,
+	calcDateProgress,
+	clampRunDay,
+	downloadCsvFile,
+	extractError,
+	getInitialYearMonthFromQuery,
+	getPreviousYearMonthInput,
+	getWeekdayLabel,
+	getYearMonthDateRange,
+	isValidInstallmentBenefit,
+	isValidRecurringInstallmentConfig,
+	parseYearMonthFromSearch,
+	QUOTE_CACHE_TTL_MS,
+	type QuoteCacheStore,
+	readQuoteCache,
+	toDateInput,
+	writeQuoteCache,
+} from "@/lib/app-helpers";
+import { formatFxRate, formatKrw, formatNumber, formatUsd } from "@/lib/format";
 import {
 	activateAuthenticatedUser,
 	clearActiveUserCode,
@@ -159,16 +182,6 @@ const defaultExpenseDraft: ExpenseDraft = {
 	amount: 0,
 };
 
-const QUOTE_CACHE_STORAGE_KEY = "my-hundred-million.quote-cache.v1";
-const QUOTE_CACHE_TTL_MS = 30 * 60 * 1000;
-
-type CachedQuoteEntry = {
-	price: number;
-	asOf: string;
-	cachedAt: number;
-};
-
-type QuoteCacheStore = Record<string, CachedQuoteEntry>;
 type AppTab = "DASHBOARD" | "YEARLY_SETTLEMENT";
 type SectionImportTarget =
 	| "STOCK"
@@ -258,6 +271,7 @@ function App() {
 	const [searchingStockSymbol, setSearchingStockSymbol] = useState(false);
 	const [isHoldingFormModalOpen, setIsHoldingFormModalOpen] = useState(false);
 	const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+	const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 	const [holdingForm, setHoldingForm] = useState(defaultHoldingForm);
 	const [submittingHolding, setSubmittingHolding] = useState(false);
 
@@ -464,11 +478,7 @@ function App() {
 				const result = await activateAuthenticatedUser();
 				setAuthenticatedUserId(result.userId);
 				if (!options?.silent) {
-					setMessage(
-						result.migrated
-							? "기존 데이터가 현재 카카오 계정으로 마이그레이션되었습니다."
-							: "카카오 로그인이 완료되었습니다.",
-					);
+					setMessage("로그인되었습니다.");
 				}
 			} catch (error) {
 				clearActiveUserCode();
@@ -1162,6 +1172,22 @@ function App() {
 		];
 		downloadCsvFile(`my-hundred-million-${selectedYearText}-yearly.csv`, rows);
 		setMessage(`${selectedYearText}년 결산 데이터를 엑셀 파일로 내보냈습니다.`);
+	}
+
+	function handleToggleExcludedMonth(month: number) {
+		setExcludedMonths((prev) => {
+			const next = new Set(prev);
+			if (next.has(month)) {
+				next.delete(month);
+			} else {
+				next.add(month);
+			}
+			return next;
+		});
+	}
+
+	function handleResetExcludedMonths() {
+		setExcludedMonths(new Set());
 	}
 
 	async function handleAddExpense(kind: ExpenseKind) {
@@ -1891,7 +1917,7 @@ function App() {
 
 	if (authLoading || authenticatedUserId === null) {
 		return (
-			<main className="min-h-screen bg-zinc-100 px-3 py-8 text-slate-900 md:px-6 xl:px-8">
+			<PageContainer>
 				<div className="mx-auto max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
 					<p className="text-sm text-slate-500">my-hundred-million</p>
 					<h1 className="mt-2 text-2xl font-semibold">카카오 로그인</h1>
@@ -1920,93 +1946,29 @@ function App() {
 								: "카카오로 로그인"}
 						</Button>
 					</div>
-					{message.length > 0 ? (
-						<div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-							{message}
-						</div>
-					) : null}
 				</div>
-			</main>
+				<ToastMessage message={message} onClose={() => setMessage("")} />
+			</PageContainer>
 		);
 	}
 
 	return (
-		<main className="min-h-screen bg-zinc-100 px-3 py-8 text-slate-900 md:px-6 xl:px-8">
+		<PageContainer>
 			<div className="mx-auto max-w-[1820px] space-y-4">
-				<section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-					<div className="flex flex-wrap items-center justify-between gap-3">
-						<div className="flex flex-wrap gap-2">
-							<Button
-								type="button"
-								variant={activeTab === "DASHBOARD" ? "default" : "outline"}
-								onClick={() => setActiveTab("DASHBOARD")}
-							>
-								월별 입력
-							</Button>
-							<Button
-								type="button"
-								variant={
-									activeTab === "YEARLY_SETTLEMENT" ? "default" : "outline"
-								}
-								onClick={() => setActiveTab("YEARLY_SETTLEMENT")}
-							>
-								연말 결산
-							</Button>
-						</div>
-						<div className="flex flex-wrap items-center gap-2">
-							<select
-								className="rounded-md border border-slate-300 px-2 py-2 text-sm"
-								value={selectedYearText}
-								onChange={(event) => handleChangeYear(event.target.value)}
-							>
-								{selectableYears.map((year) => (
-									<option key={year} value={String(year)}>
-										{year}년
-									</option>
-								))}
-							</select>
-							{activeTab === "DASHBOARD" ? (
-								<>
-									<select
-										className="rounded-md border border-slate-300 px-2 py-2 text-sm"
-										value={selectedMonthText}
-										onChange={(event) => handleChangeMonth(event.target.value)}
-									>
-										{Array.from({ length: 12 }, (_, index) => index + 1).map(
-											(month) => (
-												<option
-													key={month}
-													value={String(month).padStart(2, "0")}
-												>
-													{month}월
-												</option>
-											),
-										)}
-									</select>
-									{isSelectedMonthEmpty ? (
-										<Button
-											type="button"
-											variant="outline"
-											onClick={handleCopyPreviousMonth}
-											disabled={copyingPreviousMonth}
-										>
-											{copyingPreviousMonth
-												? "불러오는 중..."
-												: "직전 기록 불러오기"}
-										</Button>
-									) : null}
-								</>
-							) : null}
-							<Button
-								type="button"
-								variant="outline"
-								onClick={handleExportExcel}
-							>
-								엑셀 내보내기
-							</Button>
-						</div>
-					</div>
-				</section>
+				<DashboardTopControls
+					activeTab={activeTab}
+					onSelectDashboardTab={() => setActiveTab("DASHBOARD")}
+					onSelectYearlyTab={() => setActiveTab("YEARLY_SETTLEMENT")}
+					selectedYearText={selectedYearText}
+					selectableYears={selectableYears}
+					onChangeYear={handleChangeYear}
+					selectedMonthText={selectedMonthText}
+					onChangeMonth={handleChangeMonth}
+					isSelectedMonthEmpty={isSelectedMonthEmpty}
+					onCopyPreviousMonth={handleCopyPreviousMonth}
+					copyingPreviousMonth={copyingPreviousMonth}
+					onExportExcel={handleExportExcel}
+				/>
 				<div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
 					<aside className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:overflow-hidden">
 						<div className="flex items-center gap-2">
@@ -2014,223 +1976,67 @@ function App() {
 							<p className="text-lg font-semibold">my-hundred-million</p>
 						</div>
 						<div className="mt-5 h-full overflow-y-auto pr-1 pb-6">
-							<h2 className="text-base font-semibold">5. 시스템 상태</h2>
-							<p className="mt-2 text-sm text-slate-600">
-								연동 상태와 빠른 갱신 액션을 확인합니다.
-							</p>
-							<div className="mt-4 grid gap-3">
-								<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">카카오 계정</p>
-									<p className="mt-1 text-sm font-semibold">
-										{getUserDisplayName(authUser)}
-									</p>
-								</div>
-								<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">Supabase</p>
-									<p className="mt-1 text-sm font-semibold">
-										{hasSupabaseEnv ? "연결 변수 설정됨" : "미설정"}
-									</p>
-								</div>
-								<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">주식 API</p>
-									<p className="mt-1 text-sm font-semibold">
-										{hasStockApiKey ? "사용 가능" : "미설정"}
-									</p>
-								</div>
-								<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">환율(USD/KRW)</p>
-									<p className="mt-1 text-sm font-semibold">
-										{usdKrwRate === null ? "미연동" : formatFxRate(usdKrwRate)}
-									</p>
-								</div>
-								<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">현재가 캐시</p>
-									<p className="mt-1 text-sm font-semibold">30분</p>
-								</div>
-							</div>
-							<div className="mt-4 grid gap-2">
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => refreshUsdKrwRate()}
-									disabled={loadingFxRate}
-								>
-									{loadingFxRate ? "환율 갱신 중..." : "환율 새로고침"}
-								</Button>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() =>
-										refreshStockQuotes({
-											forceRefresh: true,
-											silent: false,
-										})
-									}
-									disabled={loadingQuotes || !hasStockApiKey}
-								>
-									{loadingQuotes ? "현재가 갱신 중..." : "현재가 새로고침"}
-								</Button>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={handleSignOut}
-									disabled={authActionPending}
-								>
-									로그아웃
-								</Button>
-							</div>
+							<SidebarStatusPanel
+								userDisplayName={getUserDisplayName(authUser)}
+								usdKrwLabel={
+									usdKrwRate === null ? "미연동" : formatFxRate(usdKrwRate)
+								}
+								onOpenStatusModal={() => setIsStatusModalOpen(true)}
+								onRefreshFxRate={() => refreshUsdKrwRate()}
+								loadingFxRate={loadingFxRate}
+								onRefreshQuotes={() =>
+									refreshStockQuotes({
+										forceRefresh: true,
+										silent: false,
+									})
+								}
+								loadingQuotes={loadingQuotes}
+								hasStockApiKey={hasStockApiKey}
+								onSignOut={handleSignOut}
+								authActionPending={authActionPending}
+							/>
 							<div className="mt-6 border-t border-slate-200 pt-4">
-								<h2 className="text-base font-semibold">4. 월 잔액 요약</h2>
-								<p className="mt-2 text-xs text-slate-600">
-									공식: 월급 + 수입 - (고정지출 + 비고정지출 + 적금 월 고정지출
-									+ 주식 모으기 월 고정지출)
-								</p>
-								<div className="mt-3 grid gap-2">
-									<SummaryCard label="월급" value={overview.salary} />
-									<SummaryCard label="수입(자동합산)" value={incomeTotal} />
-									<SummaryCard label="고정지출" value={fixedExpenseTotal} />
-									<SummaryCard
-										label="비고정지출"
-										value={variableExpenseTotal}
-									/>
-									<SummaryCard
-										label="소비 지출(자동합산)"
-										value={consumptionExpenseTotal}
-									/>
-									<SummaryCard
-										label="적금 월 고정지출"
-										value={installmentMonthlyTotal}
-									/>
-									<SummaryCard
-										label="주식 모으기 월 고정지출"
-										value={stockMonthlyTotal}
-									/>
-								</div>
-								<div
-									className={`mt-3 rounded-xl p-3 text-center text-base font-semibold ${
-										monthlyRemaining >= 0
-											? "bg-emerald-100 text-emerald-800"
-											: "bg-rose-100 text-rose-800"
-									}`}
-								>
-									월 잔액: {formatKrw(monthlyRemaining)}
-								</div>
-								<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">
-										실제 사용 금액 (직접 입력)
-									</p>
-									<div className="mt-2 flex items-center gap-2">
-										<CurrencyInput
-											value={overview.actualSpent}
-											onChange={(value) =>
-												setOverview((prev) => ({ ...prev, actualSpent: value }))
-											}
-										/>
-										<Button
-											type="button"
-											onClick={handleSaveOverview}
-											disabled={savingOverviewState}
-											className="shrink-0"
-										>
-											{savingOverviewState ? "저장 중..." : "저장"}
-										</Button>
-									</div>
-									<p className="mt-1 text-xs text-slate-500">
-										직접 입력: {formatKrw(overview.actualSpent)}
-									</p>
-									<p className="mt-1 text-xs text-slate-500">
-										소비 섹션 자동 합산: {formatKrw(consumptionExpenseTotal)}
-									</p>
-									<p className="mt-1 text-sm font-semibold text-slate-700">
-										최종 실제 사용 금액: {formatKrw(actualSpentTotal)}
-									</p>
-								</div>
-								<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">
-										월별 실현손익 (음수 가능)
-									</p>
-									<div className="mt-2 flex items-center gap-2">
-										<SignedCurrencyInput
-											value={overview.realizedPnl}
-											onChange={(value) =>
-												setOverview((prev) => ({ ...prev, realizedPnl: value }))
-											}
-										/>
-										<Button
-											type="button"
-											onClick={handleSaveOverview}
-											disabled={savingOverviewState}
-											className="shrink-0"
-										>
-											{savingOverviewState ? "저장 중..." : "저장"}
-										</Button>
-									</div>
-									<p
-										className={`mt-1 text-xs ${
-											overview.realizedPnl >= 0
-												? "text-emerald-600"
-												: "text-rose-600"
-										}`}
-									>
-										{overview.realizedPnl >= 0 ? "+" : "-"}
-										{formatKrw(Math.abs(overview.realizedPnl))}
-									</p>
-								</div>
-								<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-									<p className="text-xs text-slate-500">월 메모</p>
-									<textarea
-										className="mt-2 min-h-[120px] w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-blue-100 transition focus:border-blue-400 focus:ring-2"
-										value={overview.memo}
-										onChange={(event) =>
-											setOverview((prev) => ({
-												...prev,
-												memo: event.target.value,
-											}))
-										}
-										placeholder="이번 달 메모를 기록해두세요. (예: 큰 지출 사유, 투자 계획, 체크할 일)"
-									/>
-									<div className="mt-2 flex items-center justify-between gap-2">
-										<p className="text-xs text-slate-500">
-											{overview.memo.length.toLocaleString()}자
-										</p>
-										<Button
-											type="button"
-											onClick={handleSaveOverview}
-											disabled={savingOverviewState}
-											className="shrink-0"
-										>
-											{savingOverviewState ? "저장 중..." : "메모 저장"}
-										</Button>
-									</div>
-								</div>
+								<SidebarMonthlyOverview
+									salary={overview.salary}
+									incomeTotal={incomeTotal}
+									fixedExpenseTotal={fixedExpenseTotal}
+									variableExpenseTotal={variableExpenseTotal}
+									consumptionExpenseTotal={consumptionExpenseTotal}
+									installmentMonthlyTotal={installmentMonthlyTotal}
+									stockMonthlyTotal={stockMonthlyTotal}
+									monthlyRemaining={monthlyRemaining}
+								/>
+								<SidebarMonthlyInputs
+									actualSpent={overview.actualSpent}
+									onChangeActualSpent={(value) =>
+										setOverview((prev) => ({ ...prev, actualSpent: value }))
+									}
+									consumptionExpenseTotal={consumptionExpenseTotal}
+									actualSpentTotal={actualSpentTotal}
+									realizedPnl={overview.realizedPnl}
+									onChangeRealizedPnl={(value) =>
+										setOverview((prev) => ({ ...prev, realizedPnl: value }))
+									}
+									memo={overview.memo}
+									onChangeMemo={(value) =>
+										setOverview((prev) => ({ ...prev, memo: value }))
+									}
+									onSaveOverview={handleSaveOverview}
+									savingOverviewState={savingOverviewState}
+								/>
 							</div>
 						</div>
 					</aside>
 					<div className="space-y-6">
-						<header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-							<p className="text-sm text-slate-500">my-hundred-million</p>
-							<h1 className="mt-2 text-2xl font-semibold md:text-3xl">
-								{activeTab === "DASHBOARD" ? "자산 현황 대시보드" : "연말 결산"}
-							</h1>
-							<p className="mt-3 text-sm text-slate-600">
-								{activeTab === "DASHBOARD"
-									? `${selectedMonthLabel} 기준으로 월급, 지출, 주식 모으기, 적금을 관리하고 월 잔액을 확인합니다.`
-									: `${selectedYearText}년 1월부터 12월까지 결산 통계를 확인합니다.`}
-							</p>
-							<div className="mt-4 grid gap-2 text-xs text-slate-500 md:grid-cols-3">
-								<p>
-									Supabase: {hasSupabaseEnv ? "연결 변수 설정됨" : "미설정"}
-								</p>
-								<p>
-									주식 API:{" "}
-									{hasStockApiKey ? "현재가/수익률 계산 가능" : "미설정"}
-								</p>
-								<p>
-									환율(USD/KRW):{" "}
-									{usdKrwRate === null ? "미연동" : formatFxRate(usdKrwRate)}
-								</p>
-							</div>
-						</header>
+						<DashboardHeader
+							activeTab={activeTab}
+							selectedMonthLabel={selectedMonthLabel}
+							selectedYearText={selectedYearText}
+							usdKrwLabel={
+								usdKrwRate === null ? "미연동" : formatFxRate(usdKrwRate)
+							}
+						/>
+						<ToastMessage message={message} onClose={() => setMessage("")} />
 
 						{!hasSupabaseEnv ? (
 							<div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
@@ -2239,50 +2045,20 @@ function App() {
 							</div>
 						) : null}
 
-						{message.length > 0 ? (
-							<div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-								{message}
-							</div>
-						) : null}
-
 						{activeTab === "DASHBOARD" && !loading ? (
-							<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-								<DashboardStatCard
-									title="월 잔액"
-									value={formatKrw(monthlyRemaining)}
-									emphasis={monthlyRemaining >= 0 ? "positive" : "negative"}
-								/>
-								<DashboardStatCard
-									title="월 지출 합계"
-									value={formatKrw(fixedExpenseTotal + variableExpenseTotal)}
-								/>
-								<DashboardStatCard
-									title="월 저축 합계"
-									value={formatKrw(installmentMonthlyTotal + stockMonthlyTotal)}
-								/>
-								<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-									<p className="text-xs text-slate-500">월급</p>
-									<div className="mt-2 flex items-center gap-2">
-										<CurrencyInput
-											value={overview.salary}
-											onChange={(value) =>
-												setOverview((prev) => ({ ...prev, salary: value }))
-											}
-										/>
-										<Button
-											type="button"
-											onClick={handleSaveOverview}
-											disabled={savingOverviewState}
-											className="shrink-0"
-										>
-											{savingOverviewState ? "저장 중..." : "저장"}
-										</Button>
-									</div>
-									<p className="mt-2 text-xs text-slate-500">
-										{formatKrw(overview.salary)}
-									</p>
-								</div>
-							</div>
+							<DashboardKpiStrip
+								monthlyRemaining={monthlyRemaining}
+								fixedExpenseTotal={fixedExpenseTotal}
+								variableExpenseTotal={variableExpenseTotal}
+								installmentMonthlyTotal={installmentMonthlyTotal}
+								stockMonthlyTotal={stockMonthlyTotal}
+								salary={overview.salary}
+								onChangeSalary={(value) =>
+									setOverview((prev) => ({ ...prev, salary: value }))
+								}
+								onSaveSalary={handleSaveOverview}
+								savingOverviewState={savingOverviewState}
+							/>
 						) : null}
 
 						{activeTab === "DASHBOARD" ? (
@@ -2484,360 +2260,26 @@ function App() {
 																		if (draft === undefined) {
 																			return null;
 																		}
-																		const quote = quotes[item.id]?.price;
-																		const currentPrice =
-																			typeof quote === "number" ? quote : null;
-																		const isUsHolding = item.market === "US";
-																		const evaluationAmountLocal =
-																			currentPrice === null
-																				? null
-																				: currentPrice * draft.quantity;
-																		const costAmountLocal =
-																			draft.averagePrice * draft.quantity;
-																		const profitAmountLocal =
-																			evaluationAmountLocal === null
-																				? null
-																				: evaluationAmountLocal -
-																					costAmountLocal;
-																		const profitRate =
-																			profitAmountLocal === null ||
-																			costAmountLocal <= 0
-																				? null
-																				: (profitAmountLocal /
-																						costAmountLocal) *
-																					100;
-																		const currentPriceKrw =
-																			isUsHolding &&
-																			currentPrice !== null &&
-																			usdKrwRate !== null
-																				? currentPrice * usdKrwRate
-																				: currentPrice;
-																		const evaluationAmountKrw =
-																			isUsHolding &&
-																			evaluationAmountLocal !== null &&
-																			usdKrwRate !== null
-																				? evaluationAmountLocal * usdKrwRate
-																				: evaluationAmountLocal;
-																		const profitAmountKrw =
-																			isUsHolding &&
-																			profitAmountLocal !== null &&
-																			usdKrwRate !== null
-																				? profitAmountLocal * usdKrwRate
-																				: profitAmountLocal;
-																		const scheduleText =
-																			item.isAccumulating &&
-																			item.cadence !== null &&
-																			item.runDay !== null
-																				? item.cadence === "WEEKLY"
-																					? `매주 ${getWeekdayLabel(item.runDay)}`
-																					: `매달 ${item.runDay}일`
-																				: "잔고 전용";
-
 																		return (
-																			<div
+																			<StockHoldingItemCard
 																				key={item.id}
-																				className="rounded-lg border border-slate-200 p-3"
-																			>
-																				<div className="flex flex-wrap items-center justify-between gap-2">
-																					<div>
-																						<p className="font-medium">
-																							{item.name} ({item.symbol})
-																						</p>
-																						<p className="text-xs text-slate-500">
-																							유형:{" "}
-																							{item.isAccumulating
-																								? `모으기 (${scheduleText})`
-																								: scheduleText}
-																						</p>
-																						{isUsHolding ? (
-																							<p className="text-xs text-slate-500">
-																								현재가:{" "}
-																								{currentPrice === null
-																									? "미연동"
-																									: formatUsd(
-																											currentPrice,
-																										)}{" "}
-																								/{" "}
-																								{currentPriceKrw === null
-																									? "환율 미연동"
-																									: formatKrw(currentPriceKrw)}
-																								<br />
-																								평가금액:{" "}
-																								{evaluationAmountLocal === null
-																									? "-"
-																									: formatUsd(
-																											evaluationAmountLocal,
-																										)}{" "}
-																								/{" "}
-																								{evaluationAmountKrw === null
-																									? "환율 미연동"
-																									: formatKrw(
-																											evaluationAmountKrw,
-																										)}
-																							</p>
-																						) : (
-																							<p className="text-xs text-slate-500">
-																								현재가:{" "}
-																								{currentPrice === null
-																									? "미연동"
-																									: formatKrw(
-																											currentPrice,
-																										)}{" "}
-																								/ 평가금액:{" "}
-																								{evaluationAmountLocal === null
-																									? "-"
-																									: formatKrw(
-																											evaluationAmountLocal,
-																										)}
-																							</p>
-																						)}
-																						<p
-																							className={`text-xs ${
-																								profitAmountLocal !== null &&
-																								profitAmountLocal >= 0
-																									? "text-emerald-600"
-																									: "text-rose-600"
-																							}`}
-																						>
-																							수익:{" "}
-																							{profitAmountLocal === null
-																								? "-"
-																								: isUsHolding
-																									? formatUsd(profitAmountLocal)
-																									: formatKrw(
-																											profitAmountLocal,
-																										)}
-																							{profitRate === null
-																								? ""
-																								: ` (${profitRate.toFixed(2)}%)`}
-																							{isUsHolding
-																								? ` / ${
-																										profitAmountKrw === null
-																											? "환율 미연동"
-																											: formatKrw(
-																													profitAmountKrw,
-																												)
-																									}`
-																								: ""}
-																						</p>
-																					</div>
-																					<div className="flex gap-2">
-																						<Button
-																							type="button"
-																							onClick={() =>
-																								handleUpdateHolding(item)
-																							}
-																						>
-																							수정 저장
-																						</Button>
-																						<Button
-																							type="button"
-																							variant="outline"
-																							onClick={() =>
-																								handleDeleteHolding(item.id)
-																							}
-																						>
-																							삭제
-																						</Button>
-																					</div>
-																				</div>
-																				<div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-6">
-																					<InlineNumberInput
-																						label="수량"
-																						value={draft.quantity}
-																						step={0.0001}
-																						onChange={(value) =>
-																							setHoldingDrafts((prev) => ({
-																								...prev,
-																								[item.id]: {
-																									...draft,
-																									quantity: value,
-																								},
-																							}))
-																						}
-																					/>
-																					<InlineNumberInput
-																						label={
-																							item.market === "US"
-																								? "평단가(USD)"
-																								: "평단가(원)"
-																						}
-																						value={draft.averagePrice}
-																						step={0.01}
-																						onChange={(value) =>
-																							setHoldingDrafts((prev) => ({
-																								...prev,
-																								[item.id]: {
-																									...draft,
-																									averagePrice: value,
-																								},
-																							}))
-																						}
-																					/>
-																					<div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-																						<label className="flex items-center gap-2 text-xs font-medium">
-																							<input
-																								type="checkbox"
-																								checked={draft.isAccumulating}
-																								onChange={(event) =>
-																									setHoldingDrafts((prev) => ({
-																										...prev,
-																										[item.id]: {
-																											...draft,
-																											isAccumulating:
-																												event.target.checked,
-																										},
-																									}))
-																								}
-																							/>
-																							모으기 종목
-																						</label>
-																					</div>
-																					{draft.isAccumulating ? (
-																						<>
-																							<div>
-																								<label className="mb-1 block text-xs font-medium">
-																									주기
-																								</label>
-																								<select
-																									value={draft.cadence}
-																									onChange={(event) =>
-																										setHoldingDrafts(
-																											(prev) => ({
-																												...prev,
-																												[item.id]: {
-																													...draft,
-																													cadence: event.target
-																														.value as Cadence,
-																													runDay: 1,
-																												},
-																											}),
-																										)
-																									}
-																									className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																								>
-																									{CADENCES.map((cadence) => (
-																										<option
-																											key={cadence}
-																											value={cadence}
-																										>
-																											{cadence === "WEEKLY"
-																												? "매주"
-																												: "매달"}
-																										</option>
-																									))}
-																								</select>
-																							</div>
-																							<InlineNumberInput
-																								label={
-																									draft.cadence === "WEEKLY"
-																										? "요일(1=월..7=일)"
-																										: "매달 n일"
-																								}
-																								value={draft.runDay}
-																								step={1}
-																								onChange={(value) =>
-																									setHoldingDrafts((prev) => ({
-																										...prev,
-																										[item.id]: {
-																											...draft,
-																											runDay: Math.max(
-																												1,
-																												Math.round(value),
-																											),
-																										},
-																									}))
-																								}
-																							/>
-																							<div>
-																								<label className="mb-1 block text-xs font-medium">
-																									모으기 기준
-																								</label>
-																								<select
-																									value={draft.accumulationType}
-																									onChange={(event) =>
-																										setHoldingDrafts(
-																											(prev) => ({
-																												...prev,
-																												[item.id]: {
-																													...draft,
-																													accumulationType:
-																														event.target
-																															.value as AccumulationType,
-																												},
-																											}),
-																										)
-																									}
-																									className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																								>
-																									<option value="AMOUNT">
-																										회차 금액
-																									</option>
-																									<option value="SHARES">
-																										회차 수량
-																									</option>
-																								</select>
-																							</div>
-																							{draft.accumulationType ===
-																								"AMOUNT" &&
-																							item.market === "US" ? (
-																								<div>
-																									<label className="mb-1 block text-xs font-medium">
-																										금액 통화
-																									</label>
-																									<select
-																										value={
-																											draft.accumulationCurrency
-																										}
-																										onChange={(event) =>
-																											setHoldingDrafts(
-																												(prev) => ({
-																													...prev,
-																													[item.id]: {
-																														...draft,
-																														accumulationCurrency:
-																															event.target
-																																.value as AccumulationCurrency,
-																													},
-																												}),
-																											)
-																										}
-																										className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																									>
-																										<option value="USD">
-																											USD
-																										</option>
-																										<option value="KRW">
-																											원화(KRW)
-																										</option>
-																									</select>
-																								</div>
-																							) : null}
-																							<InlineNumberInput
-																								label={
-																									draft.accumulationType ===
-																									"AMOUNT"
-																										? item.market === "US"
-																											? `회차 금액(${draft.accumulationCurrency})`
-																											: "회차 금액(원)"
-																										: "회차 수량(주)"
-																								}
-																								value={draft.accumulationValue}
-																								step={0.0001}
-																								onChange={(value) =>
-																									setHoldingDrafts((prev) => ({
-																										...prev,
-																										[item.id]: {
-																											...draft,
-																											accumulationValue: value,
-																										},
-																									}))
-																								}
-																							/>
-																						</>
-																					) : null}
-																				</div>
-																			</div>
+																				item={item}
+																				draft={draft}
+																				quote={quotes[item.id]}
+																				usdKrwRate={usdKrwRate}
+																				onChangeDraft={(nextDraft) =>
+																					setHoldingDrafts((prev) => ({
+																						...prev,
+																						[item.id]: nextDraft,
+																					}))
+																				}
+																				onUpdate={() =>
+																					void handleUpdateHolding(item)
+																				}
+																				onDelete={() =>
+																					void handleDeleteHolding(item.id)
+																				}
+																			/>
 																		);
 																	})}
 																</div>
@@ -2848,413 +2290,62 @@ function App() {
 											</section>
 										) : null}
 										<LayerModal
+											open={isStatusModalOpen}
+											title="시스템 상태"
+											onClose={() => setIsStatusModalOpen(false)}
+										>
+											<div className="grid gap-3">
+												<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+													<p className="text-xs text-slate-500">Supabase</p>
+													<p className="mt-1 text-sm font-semibold">
+														{hasSupabaseEnv ? "연결 변수 설정됨" : "미설정"}
+													</p>
+												</div>
+												<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+													<p className="text-xs text-slate-500">주식 API</p>
+													<p className="mt-1 text-sm font-semibold">
+														{hasStockApiKey ? "사용 가능" : "미설정"}
+													</p>
+												</div>
+												<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+													<p className="text-xs text-slate-500">현재가 캐시</p>
+													<p className="mt-1 text-sm font-semibold">30분</p>
+												</div>
+											</div>
+										</LayerModal>
+										<StockDepositModal
 											open={isDepositModalOpen}
-											title="증권 계좌 예치금 입력"
+											overview={overview}
+											setOverview={setOverview}
+											savingOverviewState={savingOverviewState}
+											onSave={handleSaveDepositModal}
 											onClose={() => setIsDepositModalOpen(false)}
-										>
-											<p className="text-sm text-slate-600">
-												토스/삼성 계좌의 현금 예치금을 통화와 함께 입력합니다.
-											</p>
-											<div className="mt-4 grid gap-3 md:grid-cols-2">
-												<div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-													<p className="text-xs font-medium text-slate-700">
-														토스증권
-													</p>
-													<div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] gap-2">
-														<select
-															value={overview.tossDepositCurrency}
-															onChange={(event) =>
-																setOverview((prev) => ({
-																	...prev,
-																	tossDepositCurrency: event.target.value as
-																		| "KRW"
-																		| "USD",
-																}))
-															}
-															className="rounded-md border border-slate-300 px-2 py-2 text-sm"
-														>
-															<option value="KRW">원화</option>
-															<option value="USD">USD</option>
-														</select>
-														<CurrencyInput
-															value={overview.tossDepositAmount}
-															onChange={(value) =>
-																setOverview((prev) => ({
-																	...prev,
-																	tossDepositAmount: value,
-																}))
-															}
-														/>
-													</div>
-													<p className="mt-2 text-xs text-slate-500">
-														{overview.tossDepositCurrency === "USD"
-															? formatUsd(overview.tossDepositAmount)
-															: formatKrw(overview.tossDepositAmount)}
-													</p>
-												</div>
-												<div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-													<p className="text-xs font-medium text-slate-700">
-														삼성증권
-													</p>
-													<div className="mt-2 grid grid-cols-[92px_minmax(0,1fr)] gap-2">
-														<select
-															value={overview.samsungDepositCurrency}
-															onChange={(event) =>
-																setOverview((prev) => ({
-																	...prev,
-																	samsungDepositCurrency: event.target.value as
-																		| "KRW"
-																		| "USD",
-																}))
-															}
-															className="rounded-md border border-slate-300 px-2 py-2 text-sm"
-														>
-															<option value="KRW">원화</option>
-															<option value="USD">USD</option>
-														</select>
-														<CurrencyInput
-															value={overview.samsungDepositAmount}
-															onChange={(value) =>
-																setOverview((prev) => ({
-																	...prev,
-																	samsungDepositAmount: value,
-																}))
-															}
-														/>
-													</div>
-													<p className="mt-2 text-xs text-slate-500">
-														{overview.samsungDepositCurrency === "USD"
-															? formatUsd(overview.samsungDepositAmount)
-															: formatKrw(overview.samsungDepositAmount)}
-													</p>
-												</div>
-											</div>
-											<div className="mt-4 flex justify-end gap-2">
-												<Button
-													type="button"
-													variant="outline"
-													onClick={() => setIsDepositModalOpen(false)}
-												>
-													닫기
-												</Button>
-												<Button
-													type="button"
-													onClick={() => void handleSaveDepositModal()}
-													disabled={savingOverviewState}
-												>
-													{savingOverviewState ? "저장 중..." : "저장"}
-												</Button>
-											</div>
-										</LayerModal>
-										<LayerModal
+										/>
+										<HoldingFormModal
 											open={isHoldingFormModalOpen}
-											title="보유 종목 추가"
+											holdingForm={holdingForm}
+											setHoldingForm={setHoldingForm}
+											stockSearchQuery={stockSearchQuery}
+											setStockSearchQuery={setStockSearchQuery}
+											stockSymbolResults={stockSymbolResults}
+											searchingStockSymbol={searchingStockSymbol}
+											submittingHolding={submittingHolding}
+											onSearchSymbols={handleSearchSymbols}
+											onApplySymbol={applySymbol}
+											onAddHolding={handleAddHolding}
 											onClose={() => setIsHoldingFormModalOpen(false)}
-										>
-											<div className="grid grid-cols-2 gap-3">
-												<div>
-													<label className="mb-1 block text-xs font-medium">
-														증권사
-													</label>
-													<select
-														value={holdingForm.broker}
-														onChange={(event) =>
-															setHoldingForm((prev) => ({
-																...prev,
-																broker: event.target
-																	.value as (typeof BROKERS)[number],
-															}))
-														}
-														className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-													>
-														{BROKERS.map((broker) => (
-															<option value={broker} key={broker}>
-																{BROKER_LABELS[broker]}
-															</option>
-														))}
-													</select>
-												</div>
-												<div>
-													<label className="mb-1 block text-xs font-medium">
-														시장
-													</label>
-													<select
-														value={holdingForm.market}
-														onChange={(event) => {
-															const nextMarket = event.target.value as
-																| "KR"
-																| "US";
-															setStockSymbolResults([]);
-															setHoldingForm((prev) => ({
-																...prev,
-																market: nextMarket,
-																accumulationCurrency:
-																	nextMarket === "US"
-																		? prev.accumulationCurrency
-																		: "KRW",
-															}));
-														}}
-														className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-													>
-														<option value="KR">한국</option>
-														<option value="US">미국</option>
-													</select>
-												</div>
-												<div className="col-span-2">
-													<label className="mb-1 block text-xs font-medium">
-														종목 검색
-													</label>
-													<div className="flex gap-2">
-														<input
-															className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-															value={stockSearchQuery}
-															onChange={(event) =>
-																setStockSearchQuery(event.target.value)
-															}
-															onKeyDown={(event) => {
-																if (event.key === "Enter") {
-																	void handleSearchSymbols();
-																}
-															}}
-															placeholder={
-																holdingForm.market === "KR"
-																	? "삼성전자, 005930"
-																	: "AAPL, TSLA, NVDA"
-															}
-														/>
-														<Button
-															type="button"
-															variant="outline"
-															onClick={handleSearchSymbols}
-															disabled={searchingStockSymbol}
-														>
-															{searchingStockSymbol ? "검색 중" : "검색"}
-														</Button>
-													</div>
-													<div className="mt-2 max-h-40 space-y-2 overflow-y-auto rounded-md border border-slate-200 p-2">
-														{stockSymbolResults.length === 0 ? (
-															<p className="text-xs text-slate-500">
-																종목명 또는 티커를 검색하고 결과를 선택하세요.
-															</p>
-														) : (
-															stockSymbolResults.map((item) => (
-																<button
-																	type="button"
-																	key={`${item.quoteSymbol}-${item.name}`}
-																	onClick={() => applySymbol(item)}
-																	className="w-full rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
-																>
-																	<p className="font-medium">{item.name}</p>
-																	<p className="text-xs text-slate-500">
-																		{item.symbol} ({item.market}) /{" "}
-																		{item.exchange}
-																	</p>
-																</button>
-															))
-														)}
-													</div>
-													<p className="mt-2 text-xs text-slate-500">
-														선택된 종목:{" "}
-														{holdingForm.symbol.trim().length > 0
-															? `${holdingForm.name} (${holdingForm.symbol})`
-															: "없음"}
-													</p>
-												</div>
-												<div>
-													<label className="mb-1 block text-xs font-medium">
-														보유 수량
-													</label>
-													<input
-														type="number"
-														min="0"
-														step="0.0001"
-														value={holdingForm.quantity}
-														onChange={(event) =>
-															setHoldingForm((prev) => ({
-																...prev,
-																quantity: Number.parseFloat(
-																	event.target.value || "0",
-																),
-															}))
-														}
-														className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-													/>
-												</div>
-												<div>
-													<label className="mb-1 block text-xs font-medium">
-														평단가 ({holdingForm.market === "US" ? "USD" : "원"}
-														)
-													</label>
-													<input
-														type="number"
-														min="0"
-														step="0.01"
-														value={holdingForm.averagePrice}
-														onChange={(event) =>
-															setHoldingForm((prev) => ({
-																...prev,
-																averagePrice: Number.parseFloat(
-																	event.target.value || "0",
-																),
-															}))
-														}
-														className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-													/>
-												</div>
-												<div className="col-span-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-													<label className="flex items-center gap-2 text-xs font-medium">
-														<input
-															type="checkbox"
-															checked={holdingForm.isAccumulating}
-															onChange={(event) =>
-																setHoldingForm((prev) => ({
-																	...prev,
-																	isAccumulating: event.target.checked,
-																}))
-															}
-														/>
-														모으기 종목으로 관리
-													</label>
-												</div>
-												{holdingForm.isAccumulating ? (
-													<>
-														<div>
-															<label className="mb-1 block text-xs font-medium">
-																주기
-															</label>
-															<select
-																value={holdingForm.cadence}
-																onChange={(event) =>
-																	setHoldingForm((prev) => ({
-																		...prev,
-																		cadence: event.target.value as Cadence,
-																		runDay: 1,
-																	}))
-																}
-																className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-															>
-																{CADENCES.map((cadence) => (
-																	<option key={cadence} value={cadence}>
-																		{cadence === "WEEKLY" ? "매주" : "매달"}
-																	</option>
-																))}
-															</select>
-														</div>
-														<div>
-															<label className="mb-1 block text-xs font-medium">
-																실행일 (
-																{holdingForm.cadence === "WEEKLY"
-																	? "1=월 ... 7=일"
-																	: "매달 n일"}
-																)
-															</label>
-															<input
-																type="number"
-																min="1"
-																max={
-																	holdingForm.cadence === "WEEKLY" ? "7" : "31"
-																}
-																step="1"
-																value={holdingForm.runDay}
-																onChange={(event) =>
-																	setHoldingForm((prev) => ({
-																		...prev,
-																		runDay: Number.parseInt(
-																			event.target.value || "1",
-																			10,
-																		),
-																	}))
-																}
-																className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-															/>
-														</div>
-														<div>
-															<label className="mb-1 block text-xs font-medium">
-																모으기 기준
-															</label>
-															<select
-																value={holdingForm.accumulationType}
-																onChange={(event) =>
-																	setHoldingForm((prev) => ({
-																		...prev,
-																		accumulationType: event.target
-																			.value as AccumulationType,
-																	}))
-																}
-																className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-															>
-																<option value="AMOUNT">회차 금액</option>
-																<option value="SHARES">회차 수량</option>
-															</select>
-														</div>
-														{holdingForm.accumulationType === "AMOUNT" &&
-														holdingForm.market === "US" ? (
-															<div>
-																<label className="mb-1 block text-xs font-medium">
-																	금액 통화
-																</label>
-																<select
-																	value={holdingForm.accumulationCurrency}
-																	onChange={(event) =>
-																		setHoldingForm((prev) => ({
-																			...prev,
-																			accumulationCurrency: event.target
-																				.value as AccumulationCurrency,
-																		}))
-																	}
-																	className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm"
-																>
-																	<option value="USD">USD</option>
-																	<option value="KRW">원화(KRW)</option>
-																</select>
-															</div>
-														) : null}
-														<div>
-															<label className="mb-1 block text-xs font-medium">
-																모으기 값 (
-																{holdingForm.accumulationType === "AMOUNT"
-																	? holdingForm.market === "US"
-																		? holdingForm.accumulationCurrency
-																		: "원"
-																	: "주"}
-																)
-															</label>
-															<input
-																type="number"
-																min="0"
-																step="0.0001"
-																value={holdingForm.accumulationValue}
-																onChange={(event) =>
-																	setHoldingForm((prev) => ({
-																		...prev,
-																		accumulationValue: Number.parseFloat(
-																			event.target.value || "0",
-																		),
-																	}))
-																}
-																className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-															/>
-														</div>
-													</>
-												) : null}
-											</div>
-											<div className="mt-4 flex justify-end gap-2">
-												<Button
-													type="button"
-													variant="outline"
-													onClick={() => setIsHoldingFormModalOpen(false)}
-												>
-													닫기
-												</Button>
-												<Button
-													type="button"
-													onClick={handleAddHolding}
-													disabled={submittingHolding}
-												>
-													{submittingHolding ? "저장 중..." : "보유 종목 저장"}
-												</Button>
-											</div>
-										</LayerModal>
+											onChangeMarket={(nextMarket) => {
+												setStockSymbolResults([]);
+												setHoldingForm((prev) => ({
+													...prev,
+													market: nextMarket,
+													accumulationCurrency:
+														nextMarket === "US"
+															? prev.accumulationCurrency
+															: "KRW",
+												}));
+											}}
+										/>
 
 										{activeDashboardSection === "INSTALLMENT" ? (
 											<section
@@ -4493,494 +3584,62 @@ function App() {
 								)}
 							</>
 						) : (
-							<section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-								<h2 className="text-xl font-semibold">연말 결산</h2>
-								<p className="mt-2 text-sm text-slate-600">
-									1) 월 잔액 - 실제 사용 금액, 2) 월말 기준 최종 저축액(주식 +
-									적금)을 확인합니다.
-								</p>
-								<div className="mt-4 flex flex-wrap gap-2">
-									{Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-										const excluded = excludedMonths.has(month);
-										return (
-											<button
-												key={month}
-												type="button"
-												onClick={() =>
-													setExcludedMonths((prev) => {
-														const next = new Set(prev);
-														if (excluded) {
-															next.delete(month);
-														} else {
-															next.add(month);
-														}
-														return next;
-													})
-												}
-												className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-													excluded
-														? "border-slate-200 bg-slate-100 text-slate-400 line-through"
-														: "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-												}`}
-											>
-												{month}월
-											</button>
-										);
-									})}
-									{excludedMonths.size > 0 && (
-										<button
-											type="button"
-											onClick={() => setExcludedMonths(new Set())}
-											className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-500 hover:bg-rose-100"
-										>
-											초기화
-										</button>
-									)}
-								</div>
-								{loadingSettlementData ? (
-									<p className="mt-4 text-sm text-slate-500">
-										결산 데이터를 불러오는 중...
-									</p>
-								) : (
-									<>
-										<div className="mt-4 grid gap-3 md:grid-cols-3">
-											<DashboardStatCard
-												title={`${selectedYearText}년 총 수입`}
-												value={formatKrw(yearlyTotalIncome)}
-												emphasis={
-													yearlyTotalIncome >= 0 ? "positive" : "negative"
-												}
-											/>
-											<DashboardStatCard
-												title={`${selectedYearText}년 총 지출`}
-												value={formatKrw(yearlyTotalExpense)}
-												emphasis={
-													yearlyTotalExpense >= 0 ? "negative" : "positive"
-												}
-											/>
-											<DashboardStatCard
-												title={`${selectedYearText}년 총 저축`}
-												value={formatKrw(yearlyTotalSaving)}
-												emphasis={
-													yearlyTotalSaving >= 0 ? "positive" : "negative"
-												}
-											/>
-										</div>
-										<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-											<div className="flex items-end justify-between gap-2">
-												<h3 className="text-sm font-semibold text-slate-900">
-													총 저축 구성(주식/적금)
-												</h3>
-												<p className="text-xs text-slate-500">
-													기준: {latestSavingMonthLabel} · 합계{" "}
-													{formatKrw(savingCompositionTotal)}
-												</p>
-											</div>
-											{savingCompositionItems.length === 0 ? (
-												<p className="mt-3 text-sm text-slate-500">
-													차트를 표시할 저축 데이터가 없습니다.
-												</p>
-											) : (
-												<div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
-													<div className="h-[280px]">
-														<Doughnut
-															data={savingCompositionChart}
-															options={savingCompositionChartOptions}
-														/>
-													</div>
-													<div className="grid gap-2 self-start">
-														{savingCompositionItems.map((item) => (
-															<div
-																key={item.label}
-																className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-															>
-																<p className="truncate text-slate-700">
-																	{item.label}
-																</p>
-																<div className="shrink-0 text-right">
-																	<p className="font-semibold text-slate-900">
-																		{formatKrw(item.amount)}
-																	</p>
-																	<p className="text-xs text-slate-500">
-																		{savingCompositionTotal > 0
-																			? `${((item.amount / savingCompositionTotal) * 100).toFixed(1)}%`
-																			: "0.0%"}
-																	</p>
-																</div>
-															</div>
-														))}
-													</div>
-												</div>
-											)}
-										</div>
-										<div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
-											<table className="min-w-full text-sm">
-												<thead className="bg-slate-50 text-slate-600">
-													<tr>
-														<th className="px-3 py-2 text-left">월</th>
-														<th className="px-3 py-2 text-right">추가 수입</th>
-														<th className="px-3 py-2 text-right">월 잔액</th>
-														<th className="px-3 py-2 text-right">실제 사용</th>
-														<th className="px-3 py-2 text-right">순잔액</th>
-														<th className="px-3 py-2 text-right">실현손익</th>
-														<th className="px-3 py-2 text-right">
-															월말 최종 저축액
-														</th>
-													</tr>
-												</thead>
-												<tbody>
-													{yearlySettlementRows.map((row) => {
-														const monthNum = Number.parseInt(
-															row.yearMonth.slice(5),
-															10,
-														);
-														const isExcluded = excludedMonths.has(monthNum);
-														return (
-															<tr
-																key={row.yearMonth}
-																className={`border-t border-slate-100 ${isExcluded ? "opacity-30" : ""}`}
-															>
-																<td className="px-3 py-2">{row.monthLabel}</td>
-																<td className="px-3 py-2 text-right">
-																	{formatKrw(row.income)}
-																</td>
-																<td className="px-3 py-2 text-right">
-																	{formatKrw(row.plannedRemaining)}
-																</td>
-																<td className="px-3 py-2 text-right">
-																	{formatKrw(row.actualSpent)}
-																</td>
-																<td className="px-3 py-2 text-right">
-																	<span
-																		className={
-																			row.netAfterActual >= 0
-																				? "text-emerald-600"
-																				: "text-rose-600"
-																		}
-																	>
-																		{formatKrw(row.netAfterActual)}
-																	</span>
-																</td>
-																<td className="px-3 py-2 text-right">
-																	<span
-																		className={
-																			row.realizedPnl >= 0
-																				? "text-emerald-600"
-																				: "text-rose-600"
-																		}
-																	>
-																		{row.realizedPnl >= 0 ? "+" : "-"}
-																		{formatKrw(Math.abs(row.realizedPnl))}
-																	</span>
-																</td>
-																<td className="px-3 py-2 text-right">
-																	{formatKrw(row.cumulativeSaving)}
-																</td>
-															</tr>
-														);
-													})}
-												</tbody>
-											</table>
-										</div>
-									</>
-								)}
-							</section>
+							<YearlySettlementSection
+								selectedYearText={selectedYearText}
+								excludedMonths={excludedMonths}
+								onToggleExcludedMonth={handleToggleExcludedMonth}
+								onResetExcludedMonths={handleResetExcludedMonths}
+								loadingSettlementData={loadingSettlementData}
+								yearlyTotalIncome={yearlyTotalIncome}
+								yearlyTotalExpense={yearlyTotalExpense}
+								yearlyTotalSaving={yearlyTotalSaving}
+								latestSavingMonthLabel={latestSavingMonthLabel}
+								savingCompositionTotal={savingCompositionTotal}
+								savingCompositionItems={savingCompositionItems}
+								savingCompositionChart={savingCompositionChart}
+								savingCompositionChartOptions={savingCompositionChartOptions}
+								yearlySettlementRows={yearlySettlementRows}
+							/>
 						)}
-						{sectionImportModalTarget !== null ? (
-							<LayerModal
-								open
-								title={`${getSectionImportTargetLabel(sectionImportModalTarget)} 데이터 불러오기`}
-								onClose={() => setSectionImportModalTarget(null)}
-							>
-								<p className="text-sm text-slate-600">
-									현재 선택 월은 {selectedMonthLabel}입니다. 불러올 기준 연월을
-									선택해주세요.
-								</p>
-								<div className="mt-4 flex flex-wrap items-center gap-2">
-									<input
-										type="month"
-										value={activeSectionImportYearMonth}
-										onChange={(event) =>
-											setSectionImportYearMonth((prev) => ({
-												...prev,
-												[sectionImportModalTarget]: event.target.value,
-											}))
-										}
-										className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-									/>
-									<Button
-										type="button"
-										onClick={() =>
-											void handleCopySectionByYearMonth(
-												sectionImportModalTarget,
-											)
-										}
-										disabled={
-											copyingSectionTarget !== null ||
-											activeSectionImportYearMonth.trim().length === 0
-										}
-									>
-										{copyingSectionTarget === sectionImportModalTarget
-											? "불러오는 중..."
-											: "불러오기"}
-									</Button>
-								</div>
-							</LayerModal>
-						) : null}
+						<SectionImportModal
+							open={sectionImportModalTarget !== null}
+							titleLabel={
+								sectionImportModalTarget === null
+									? ""
+									: getSectionImportTargetLabel(sectionImportModalTarget)
+							}
+							selectedMonthLabel={selectedMonthLabel}
+							yearMonth={activeSectionImportYearMonth}
+							onChangeYearMonth={(value) => {
+								if (sectionImportModalTarget === null) {
+									return;
+								}
+								setSectionImportYearMonth((prev) => ({
+									...prev,
+									[sectionImportModalTarget]: value,
+								}));
+							}}
+							onImport={() => {
+								if (sectionImportModalTarget === null) {
+									return;
+								}
+								void handleCopySectionByYearMonth(sectionImportModalTarget);
+							}}
+							disabled={
+								copyingSectionTarget !== null ||
+								activeSectionImportYearMonth.trim().length === 0
+							}
+							loading={
+								sectionImportModalTarget !== null &&
+								copyingSectionTarget === sectionImportModalTarget
+							}
+							onClose={() => setSectionImportModalTarget(null)}
+						/>
 					</div>
 				</div>
 			</div>
-		</main>
+		</PageContainer>
 	);
-}
-
-type SectionYearMonthImportControlProps = {
-	onOpen: () => void;
-	disabled?: boolean;
-	loading: boolean;
-};
-
-function SectionYearMonthImportControl({
-	onOpen,
-	disabled = false,
-	loading,
-}: SectionYearMonthImportControlProps) {
-	return (
-		<div className="mt-3 flex items-center justify-end">
-			<Button
-				type="button"
-				size="sm"
-				variant="outline"
-				onClick={onOpen}
-				disabled={disabled}
-			>
-				{loading ? "불러오는 중..." : "특정 연월 데이터 불러오기"}
-			</Button>
-		</div>
-	);
-}
-
-type CurrencyInputProps = {
-	value: number;
-	onChange: (value: number) => void;
-};
-
-function CurrencyInput({ value, onChange }: CurrencyInputProps) {
-	return (
-		<input
-			inputMode="numeric"
-			className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-			value={value === 0 ? "" : formatNumber(value)}
-			onChange={(event) => onChange(parseIntegerInput(event.target.value))}
-			placeholder="0"
-		/>
-	);
-}
-
-type SignedCurrencyInputProps = {
-	value: number;
-	onChange: (value: number) => void;
-};
-
-function SignedCurrencyInput({ value, onChange }: SignedCurrencyInputProps) {
-	const absolute = Math.abs(value);
-	const displayValue =
-		absolute === 0 ? "" : `${value < 0 ? "-" : ""}${formatNumber(absolute)}`;
-	return (
-		<input
-			inputMode="numeric"
-			className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-			value={displayValue}
-			onChange={(event) =>
-				onChange(parseSignedIntegerInput(event.target.value))
-			}
-			placeholder="0"
-		/>
-	);
-}
-
-type InlineNumberInputProps = {
-	label: string;
-	value: number;
-	step: number;
-	onChange: (value: number) => void;
-};
-
-function InlineNumberInput({
-	label,
-	value,
-	step,
-	onChange,
-}: InlineNumberInputProps) {
-	return (
-		<div>
-			<label className="mb-1 block text-xs font-medium">{label}</label>
-			<input
-				type="number"
-				min="0"
-				step={step}
-				value={value}
-				onChange={(event) =>
-					onChange(Number.parseFloat(event.target.value || "0"))
-				}
-				className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-			/>
-		</div>
-	);
-}
-
-type SummaryCardProps = {
-	label: string;
-	value: number;
-};
-
-function SummaryCard({ label, value }: SummaryCardProps) {
-	return (
-		<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-			<p className="text-xs text-slate-500">{label}</p>
-			<p className="mt-1 text-base font-semibold">{formatKrw(value)}</p>
-		</div>
-	);
-}
-
-type DashboardStatCardProps = {
-	title: string;
-	value: string;
-	emphasis?: "default" | "positive" | "negative";
-	delta?: string | null;
-	deltaEmphasis?: "default" | "positive" | "negative";
-};
-
-function DashboardStatCard({
-	title,
-	value,
-	emphasis = "default",
-	delta = null,
-	deltaEmphasis = "default",
-}: DashboardStatCardProps) {
-	const valueClassName =
-		emphasis === "positive"
-			? "text-emerald-600"
-			: emphasis === "negative"
-				? "text-rose-600"
-				: "text-slate-900";
-	const deltaClassName =
-		deltaEmphasis === "positive"
-			? "text-emerald-600"
-			: deltaEmphasis === "negative"
-				? "text-rose-600"
-				: "text-slate-500";
-	return (
-		<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-			<p className="text-xs uppercase tracking-wide text-slate-500">{title}</p>
-			<div className="mt-2 flex flex-wrap items-end gap-2">
-				<p className={`text-2xl font-semibold ${valueClassName}`}>{value}</p>
-				{delta !== null ? (
-					<p className={`pb-1 text-sm font-semibold ${deltaClassName}`}>
-						{delta}
-					</p>
-				) : null}
-			</div>
-		</div>
-	);
-}
-
-type LayerModalProps = {
-	open: boolean;
-	title: string;
-	onClose: () => void;
-	children: ReactNode;
-};
-
-function LayerModal({ open, title, onClose, children }: LayerModalProps) {
-	if (!open) {
-		return null;
-	}
-
-	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-			<div className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
-				<div className="mb-4 flex items-center justify-between">
-					<h3 className="text-lg font-semibold">{title}</h3>
-					<Button type="button" variant="outline" size="sm" onClick={onClose}>
-						닫기
-					</Button>
-				</div>
-				<div className="max-h-[72vh] overflow-y-auto pr-1">{children}</div>
-			</div>
-		</div>
-	);
-}
-
-type CsvRow = Array<string | number | null | undefined>;
-
-function escapeCsvCell(value: string | number | null | undefined): string {
-	if (value === null || value === undefined) {
-		return "";
-	}
-	const normalized = String(value)
-		.replaceAll("\r\n", "\n")
-		.replaceAll("\r", "\n");
-	if (
-		normalized.includes(",") ||
-		normalized.includes('"') ||
-		normalized.includes("\n")
-	) {
-		return `"${normalized.replaceAll('"', '""')}"`;
-	}
-	return normalized;
-}
-
-function downloadCsvFile(fileName: string, rows: CsvRow[]) {
-	const csv = rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n");
-	const blob = new Blob([`\uFEFF${csv}`], {
-		type: "text/csv;charset=utf-8;",
-	});
-	const url = URL.createObjectURL(blob);
-	const anchor = document.createElement("a");
-	anchor.href = url;
-	anchor.download = fileName;
-	document.body.append(anchor);
-	anchor.click();
-	anchor.remove();
-	URL.revokeObjectURL(url);
-}
-
-function isValidInstallmentBenefit(draft: InstallmentDraft): boolean {
-	if (draft.benefitType === "INTEREST_RATE") {
-		return draft.benefitValue >= 0;
-	}
-	return draft.benefitValue > 0;
-}
-
-function isValidRecurringInstallmentConfig(draft: InstallmentDraft): boolean {
-	if (!draft.isRecurring) {
-		return true;
-	}
-	if (draft.monthlyAmount <= 0) {
-		return false;
-	}
-	const normalizedRunDay = clampRunDay(draft.runDay, draft.cadence);
-	if (draft.cadence === "WEEKLY") {
-		return normalizedRunDay >= 1 && normalizedRunDay <= 7;
-	}
-	return normalizedRunDay >= 1 && normalizedRunDay <= 31;
-}
-
-function toYearMonthInput(date: Date): string {
-	const year = date.getFullYear();
-	const month = `${date.getMonth() + 1}`.padStart(2, "0");
-	return `${year}-${month}`;
-}
-
-function getPreviousYearMonthInput(yearMonth: string): string {
-	const [yearText, monthText] = yearMonth.split("-");
-	const year = Number.parseInt(yearText, 10);
-	const month = Number.parseInt(monthText, 10);
-	if (Number.isNaN(year) || Number.isNaN(month) || month < 1 || month > 12) {
-		return toYearMonthInput(new Date());
-	}
-	return toYearMonthInput(new Date(year, month - 2, 1));
 }
 
 function getSectionImportTargetLabel(target: SectionImportTarget): string {
@@ -5017,171 +3676,4 @@ function getInitialTabFromQuery(): AppTab {
 	}
 	return parseTabFromSearch(window.location.search);
 }
-
-function parseYearMonthFromSearch(search: string): string | null {
-	const params = new URLSearchParams(search);
-	const year = params.get("year");
-	const month = params.get("month");
-	if (year === null || month === null) {
-		return null;
-	}
-	if (!/^\d{4}$/.test(year) || !/^\d{1,2}$/.test(month)) {
-		return null;
-	}
-	const monthNumber = Number.parseInt(month, 10);
-	if (Number.isNaN(monthNumber) || monthNumber < 1 || monthNumber > 12) {
-		return null;
-	}
-	return `${year}-${String(monthNumber).padStart(2, "0")}`;
-}
-
-function getInitialYearMonthFromQuery(): string {
-	if (typeof window === "undefined") {
-		return toYearMonthInput(new Date());
-	}
-	return (
-		parseYearMonthFromSearch(window.location.search) ??
-		toYearMonthInput(new Date())
-	);
-}
-
-function parseYearMonth(yearMonth: string): { year: number; month: number } {
-	const [yearText, monthText] = yearMonth.split("-");
-	const year = Number.parseInt(yearText, 10);
-	const month = Number.parseInt(monthText, 10);
-	if (Number.isNaN(year) || Number.isNaN(month) || month < 1 || month > 12) {
-		const now = new Date();
-		return { year: now.getFullYear(), month: now.getMonth() + 1 };
-	}
-	return { year, month };
-}
-
-function getYearMonthDateRange(yearMonth: string) {
-	const { year, month } = parseYearMonth(yearMonth);
-	const start = new Date(year, month - 1, 1);
-	const end = new Date(year, month, 0);
-	return {
-		fromDate: toDateInput(start),
-		toDate: toDateInput(end),
-	};
-}
-
-function getWeekdayLabel(value: number): string {
-	const map: Record<number, string> = {
-		1: "월",
-		2: "화",
-		3: "수",
-		4: "목",
-		5: "금",
-		6: "토",
-		7: "일",
-	};
-	return map[Math.min(Math.max(1, value), 7)] ?? "월";
-}
-
-function clampRunDay(runDay: number, cadence: Cadence): number {
-	if (cadence === "WEEKLY") {
-		return Math.min(Math.max(1, runDay), 7);
-	}
-	return Math.min(Math.max(1, runDay), 31);
-}
-
-function calcDateProgress(startDate: string, endDate: string | null): number {
-	if (endDate === null) {
-		return 0;
-	}
-	const start = new Date(startDate);
-	const end = new Date(endDate);
-	const total = end.getTime() - start.getTime();
-	if (Number.isNaN(total) || total <= 0) {
-		return 0;
-	}
-	const elapsed = Date.now() - start.getTime();
-	return clampPercent((elapsed / total) * 100);
-}
-
-function toDateInput(date: Date): string {
-	const year = date.getFullYear();
-	const month = `${date.getMonth() + 1}`.padStart(2, "0");
-	const day = `${date.getDate()}`.padStart(2, "0");
-	return `${year}-${month}-${day}`;
-}
-
-function extractError(error: unknown): string {
-	if (error instanceof Error) {
-		return error.message;
-	}
-	return "알 수 없는 오류가 발생했습니다.";
-}
-
-function buildHoldingQuoteCacheKey(holding: StockHolding): string {
-	const symbol = holding.symbol.trim().toUpperCase();
-	const quoteSymbol = holding.quoteSymbol.trim().toUpperCase();
-	return `${holding.market}:${quoteSymbol.length > 0 ? quoteSymbol : symbol}`;
-}
-
-function readQuoteCache(): QuoteCacheStore {
-	if (typeof window === "undefined") {
-		return {};
-	}
-	try {
-		const raw = window.localStorage.getItem(QUOTE_CACHE_STORAGE_KEY);
-		if (raw === null) {
-			return {};
-		}
-		const parsed = JSON.parse(raw) as unknown;
-		if (parsed === null || typeof parsed !== "object") {
-			return {};
-		}
-		const result: QuoteCacheStore = {};
-		for (const [key, value] of Object.entries(parsed)) {
-			if (
-				value === null ||
-				typeof value !== "object" ||
-				!("price" in value) ||
-				!("asOf" in value) ||
-				!("cachedAt" in value)
-			) {
-				continue;
-			}
-			const price = (value as { price: unknown }).price;
-			const asOf = (value as { asOf: unknown }).asOf;
-			const cachedAt = (value as { cachedAt: unknown }).cachedAt;
-			if (
-				typeof price !== "number" ||
-				typeof asOf !== "string" ||
-				typeof cachedAt !== "number"
-			) {
-				continue;
-			}
-			result[key] = { price, asOf, cachedAt };
-		}
-		return result;
-	} catch {
-		return {};
-	}
-}
-
-function writeQuoteCache(cache: QuoteCacheStore): void {
-	if (typeof window === "undefined") {
-		return;
-	}
-	try {
-		window.localStorage.setItem(QUOTE_CACHE_STORAGE_KEY, JSON.stringify(cache));
-	} catch {
-		// ignore cache write failures
-	}
-}
-
-function parseSignedIntegerInput(input: string): number {
-	const trimmed = input.trim();
-	const isNegative = trimmed.startsWith("-");
-	const digits = trimmed.replace(/\D/g, "");
-	if (digits.length === 0) {
-		return 0;
-	}
-	const value = Number.parseInt(digits, 10);
-	return isNegative ? -value : value;
-}
-
 export default App;
