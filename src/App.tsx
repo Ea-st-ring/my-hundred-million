@@ -25,6 +25,7 @@ import { YearlySettlementSection } from "@/components/layout/yearly-settlement-s
 import { HoldingFormModal } from "@/components/sections/holding-form-modal";
 import { StockDepositModal } from "@/components/sections/stock-deposit-modal";
 import { StockHoldingItemCard } from "@/components/sections/stock-holding-item-card";
+import { TossSyncPanel } from "@/components/sections/toss-invest/toss-sync-panel";
 import { Button } from "@/components/ui/button";
 import {
 	buildHoldingQuoteCacheKey,
@@ -2101,6 +2102,16 @@ function App() {
 													disabled={copyingSectionTarget !== null}
 													loading={copyingSectionTarget === "STOCK"}
 												/>
+
+												<div className="mt-4">
+													<TossSyncPanel
+														holdings={holdings}
+														overview={overview}
+														onHoldingsChanged={setHoldings}
+														onOverviewChanged={setOverview}
+														onMessage={setMessage}
+													/>
+												</div>
 
 												<div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5">
 													<div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">

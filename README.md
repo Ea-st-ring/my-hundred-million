@@ -46,6 +46,7 @@ VITE_EODHD_API_KEY=
 VITE_TWELVE_DATA_API_KEY=
 VITE_FMP_API_KEY=
 VITE_ALPHA_VANTAGE_API_KEY=
+VITE_TOSS_INVEST_PROXY_URL=
 ```
 
 - 국내 주식 검색/현재가는 Supabase Edge Function(`krx-proxy`)을 사용합니다.
@@ -62,6 +63,40 @@ npx supabase functions deploy krx-proxy --project-ref 프로젝트_REF
 
 - 함수 경로: `supabase/functions/krx-proxy/index.ts`
 - 함수 설정: `supabase/functions/krx-proxy/config.toml` (`verify_jwt = false`)
+
+### 토스증권 Open API 연동 (선택)
+
+주식 섹션의 "보유종목 동기화" / "예치금 동기화" 기능은 [토스증권 Open API](https://developers.tossinvest.com/docs)를 사용합니다. 이 앱은 Kakao 로그인 기반으로 여러 사용자가 각자 데이터를 분리해서 쓰는 구조라, 토스 연동 자격증명(client_id/client_secret/accountSeq)도 **배포자 전역 설정이 아니라 로그인한 사용자별로** `toss_invest_credentials` 테이블에 저장됩니다. 등록하지 않은 사용자는 해당 버튼만 비활성화되고 나머지 기능에는 영향이 없습니다.
+
+**⚠️ Supabase Edge Function으로는 배포할 수 없습니다.** 토스증권 Open API는 client_id별로 사전에 등록한 고정 IP에서만 호출을 허용하는데, Supabase Edge Function(Deno Deploy)은 요청마다 아웃바운드 IP가 달라져 화이트리스트를 통과할 수 없습니다([Supabase 공식 문서](https://supabase.com/docs/guides/troubleshooting/why-supabase-edge-functions-cannot-provide-static-egress-ips-for-whitelisting-3d78b0)). 그래서 이 프록시는 고정 IP를 가진 별도 서버(`server/toss-invest-proxy/`)에서 실행합니다. Supabase DB(`toss_invest_credentials` 테이블)와 인증 방식은 동일하게 사용합니다.
+
+```bash
+# 예: Oracle Cloud Always Free 인스턴스(고정 IP 기본 포함)에 배포
+scp -i <key> -r server/toss-invest-proxy ubuntu@<PUBLIC_IP>:~/toss-invest-proxy
+ssh -i <key> ubuntu@<PUBLIC_IP>
+cd ~/toss-invest-proxy
+sudo bash install.sh <PUBLIC_IP>
+# 이후 /etc/toss-invest-proxy.env 에 SUPABASE_URL / SUPABASE_ANON_KEY 입력 후
+sudo systemctl restart toss-invest-proxy
+```
+
+- `install.sh`가 Deno + Caddy 설치, systemd 서비스 등록, `<PUBLIC_IP>.nip.io` 도메인으로 HTTPS(Let's Encrypt 자동 발급) 설정까지 처리합니다. 별도 도메인 구매가 필요 없습니다.
+- 완료되면 프론트엔드 `.env`에 `VITE_TOSS_INVEST_PROXY_URL=https://<PUBLIC_IP>.nip.io`를 설정하세요.
+- 이 프록시가 뜬 서버의 **고정 IP를 토스증권 개발자센터(WTS 설정 > Open API)의 IP 화이트리스트에 등록**해야 실제로 호출이 통과합니다.
+- 인증 방식은 기존과 동일합니다 — 호출자의 로그인 세션(JWT)으로 본인 신원을 확인하고, RLS로 보호된 `toss_invest_credentials` 테이블에서 본인 행만 조회해 사용합니다. 서버에는 `SUPABASE_URL`/`SUPABASE_ANON_KEY`(공개 가능한 anon key)만 있으면 되고, 토스 client_secret은 서버에 저장되지 않습니다.
+- 각 사용자는 앱의 주식 섹션 → "토스증권 Open API 연동" 카드 → **설정** 버튼에서 본인의 client_id/client_secret/accountSeq를 직접 입력합니다.
+  - client_id/client_secret: 토스증권 개발자센터(WTS 설정 > Open API)에서 발급.
+  - accountSeq: 아래처럼 토큰을 발급받은 뒤 `GET /api/v1/accounts` 응답값에서 한 번 확인.
+    ```bash
+    curl -s -X POST 'https://openapi.tossinvest.com/oauth2/token' \
+      -H 'Content-Type: application/x-www-form-urlencoded' \
+      -d 'grant_type=client_credentials' -d 'client_id=xxx' -d 'client_secret=yyy'
+    curl -s 'https://openapi.tossinvest.com/api/v1/accounts' \
+      -H 'Authorization: Bearer <위에서 받은 access_token>'
+    ```
+- 시세/종목정보/보유주식/매수가능금액 조회만 지원하며, 주문 생성·정정·취소 등 매매 관련 엔드포인트는 호출하지 않습니다.
+- CORS는 GitHub Pages 배포 origin과 로컬 개발 서버(`localhost:5173`)만 허용합니다. 다른 origin에서 배포한다면 `server/toss-invest-proxy/main.ts`의 `ALLOWED_ORIGINS`에 추가하고 서버에 재배포하세요.
+- `client_secret`은 로그인한 본인만 RLS로 읽고 쓸 수 있는 테이블에 평문으로 저장됩니다(이 앱의 다른 금액 데이터와 동일한 신뢰 모델). 이 secret은 토스증권 계좌의 주문 권한까지 포함하므로 유출되지 않도록 주의하세요.
 
 ## 2) Supabase 테이블 생성
 
